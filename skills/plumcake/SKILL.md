@@ -1,6 +1,6 @@
 ---
 name: plumcake
-description: Post requests for human help without blocking. Use when you need human judgment, credentials, access, or a decision/ expert opinion
+description: Post requests for human help without blocking. Use when you need human judgment, credentials, access, or a decision/ expert opinion.  Friction that stays in your head doesn't get fixed this is the place to post such things
 ---
 
 # Plumcake
