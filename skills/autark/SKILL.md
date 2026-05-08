@@ -5,9 +5,22 @@ description: Use when an agent is operating Autark — running a market-discover
 
 # Autark
 
-Autark takes a product and runs market-discovery experiments on it: form hypotheses, post outreach, observe what comes back. The CLI is the only writer — you never edit `*-runbook/` markdown files, never write actions to a file, never inline action tables. Every external touch becomes one row in the cloud DB; the dashboard at `autark.kushalsm.com` renders it live.
+Autark takes a product and runs market-discovery experiments on it: form hypotheses, post outreach, observe what comes back. The CLI is the only writer — you never edit `*-runbook/` markdown files, never write actions to a file, never inline action tables. Every external touch becomes one row on the dashboard at `autark.kushalsm.com`, rendered live.
 
 Read this once. Reload product context with `autark context <product>/<H##>` whenever you start work.
+
+## Setup (one-time per machine)
+
+If `autark --help` works, you're set. Otherwise:
+
+```sh
+npm i -g autark-cli
+autark login send <email>
+# check inbox for the 6-digit code, then:
+autark login verify <email> --code <code>
+```
+
+For an agent, use `kushal@kushalsm.com` (the canonical agent inbox — see the `email` skill). Credentials land in `~/.autark/credentials.json` and last ~30 days.
 
 ## Operating contract
 
@@ -15,34 +28,29 @@ You are **permissionless**. The job is to create market signal, not to prepare w
 
 When something is genuinely blocked — credentials, payments, a login, a judgment call, or a tool that isn't behaving — post to **Plumcake** and keep working through another channel. Plumcake is a bulletin board, not a pause button. (See the plumcake skill.)
 
-When you do post a Plumcake escalation, log it as an action so it shows on the dashboard:
+When you do post a Plumcake escalation, log it as an autark action so it shows on the dashboard:
 
 ```sh
-autark log action --run <run_id> --channel plumcake \
+autark log action --run $RUN_ID --channel plumcake \
   --title "blocked on Upwork phone verification" \
-  --url "plumcake://session/<uuid>"
+  --url "https://plumcake.kushalsm.com/posts/$POST_ID"
 ```
 
 ## The data model
 
 ```
-$users        ← managed by InstantDB, holds your identity
-  ↓ owns
 products      ← one per product (chrome-relay, tteg, customer's-thing, ...)
-  ↓ has
-hypotheses    ← frozen bets. write-once. only `status` mutates afterward.
-  ↓ has
-runs          ← one execution attempt. holds a freeform `narrative_md` blob.
-  ↓ has
-actions       ← every external touch. one row per email, GH comment, Reddit post, etc.
+  └ hypotheses    ← frozen bets. write-once. only the status changes after.
+      └ runs          ← one execution attempt. holds a freeform narrative.
+          └ actions       ← every external touch. one row per email, GH comment, Reddit post, etc.
 ```
 
 Concepts to internalize:
 
-- **Hypothesis = frozen bet.** Once created, the text doesn't change. If your understanding shifts, create a *new* `H##`, don't mutate the old one. Status moves through `active → inactive | dead`. Active hypotheses are what the cron picks up next.
-- **Run = one session of work.** You start a run, do the work, log actions as you go, then finish with a narrative. A run can stay "in progress" (no `finished_at`) while you wait for replies — fine. The next session starts a fresh run under the same hypothesis.
-- **Action = one external touch.** Email sent, GitHub comment posted, Reddit thread linked, Plumcake escalation. Polymorphic by `channel`. Body content for emails/comments stays in AgentMail/GitHub — you store the pointer (`agentmail_thread_id` or `url`), the dashboard fetches the live conversation at view time.
-- **Narrative = your prose.** Context, decisions, follow-ups, what you learned. Lives in `runs.narrative_md`. Public by default. Write knowing the world reads it.
+- **Hypothesis = frozen bet.** Once created, the text doesn't change. If your understanding shifts, create a *new* `H##`, don't mutate the old one. Status moves through `active → inactive | dead` via `autark hypothesis status`. Active hypotheses are what the cron picks up next.
+- **Run = one session of work.** You start a run with `autark run start`, do the work, log actions as you go, then close it with `autark run finish`. A run can stay in progress while you wait for replies — fine. The next session starts a fresh run under the same hypothesis.
+- **Action = one external touch.** Email sent, GitHub comment posted, Reddit thread linked, Plumcake escalation. Polymorphic by `--channel`. Body content for emails/comments stays in AgentMail/GitHub — you store the pointer with `--agentmail-thread-id` or `--url`, the dashboard fetches the live conversation at view time.
+- **Narrative = your prose.** Context, decisions, follow-ups, what you learned. Set with `--narrative` on `autark run finish`. Public by default. Write knowing the world reads it.
 
 ## Public-by-default
 
@@ -57,7 +65,7 @@ Do not write secrets, API keys, internal product strategy you wouldn't want comp
 
 ## Tool surface
 
-The CLI talks to a Worker; you don't manage credentials or schemas. One-time setup per machine is `autark login`; after that the token in `~/.autark/credentials.json` carries you for ~30 days.
+The CLI talks to a Worker; you don't manage credentials or schemas.
 
 | Command | What it does |
 |---|---|
@@ -65,12 +73,12 @@ The CLI talks to a Worker; you don't manage credentials or schemas. One-time set
 | `autark login verify <email> --code <code>` | Verify the code, save credentials locally |
 | `autark me` | Print signed-in user (id + email) |
 | `autark logout` | Wipe local credentials |
-| `autark product upsert --slug <s> --name <n> [--url <u>] [--tagline <t>] [--visibility public\|private]` | Create or update a product card. Idempotent on `slug`. |
+| `autark product upsert --slug <s> --name <n> [--url <u>] [--tagline <t>] [--visibility public\|private]` | Create or update a product card. Idempotent on `--slug`. |
 | `autark product list` | List products you own |
-| `autark hypothesis create --product <slug> --code H## --md @./hyp.md [--title <t>] [--status active\|inactive\|dead]` | Create a frozen hypothesis. Idempotent on `(product, code)`. |
-| `autark hypothesis status <slug>/<H##> --status active\|inactive\|dead` | Update only the status |
+| `autark hypothesis create --product <slug> --code H## --md @./hyp.md [--title <t>] [--status active\|inactive\|dead]` | Create a frozen hypothesis. Idempotent on `(--product, --code)`. |
+| `autark hypothesis status <slug>/<H##> --status active\|inactive\|dead` | Change only the status |
 | `autark run start --hypothesis <slug>/<H##>` | Start a new run; prints `RUN_ID` to stdout |
-| `autark run finish --run <id> --narrative @./run.md` | Set narrative + `finished_at` |
+| `autark run finish --run <id> --narrative @./run.md` | Attach the narrative and close the run |
 | `autark log action --run <id> --channel <c> --title <t> [--url <u>] [--agentmail-thread-id <uuid>] [--recipient <email>] [--metadata @./meta.json]` | Log one outreach touch |
 | `autark context <slug>/<H##>` | Print the bundle: hypothesis text + recent runs + actions + narratives |
 
@@ -78,7 +86,7 @@ The CLI talks to a Worker; you don't manage credentials or schemas. One-time set
 
 ## Channels
 
-`channel` on an action is one of:
+`--channel` on an action is one of:
 
 - `email` — outbound email via AgentMail. Always pass `--agentmail-thread-id` and `--recipient`.
 - `github` — comment on a GitHub issue. Pass `--url` to the issue or specific comment.
@@ -87,9 +95,9 @@ The CLI talks to a Worker; you don't manage credentials or schemas. One-time set
 - `hn` — Hacker News post or comment. Pass `--url`.
 - `blog` — a blog post you published. Pass `--url`.
 - `gist` — a public gist. Pass `--url`.
-- `plumcake` — an escalation. Pass `--url plumcake://session/<uuid>`.
+- `plumcake` — an escalation. Pass `--url https://plumcake.kushalsm.com/posts/<post_id>`.
 
-Add new channels by just using a new string — the schema is polymorphic. Use `--metadata @./meta.json` for channel-specific extras (`{repo, pr_number, sub, post_id, ...}`).
+Add new channels by just using a new string — the system is polymorphic. Use `--metadata @./meta.json` for channel-specific extras (`{repo, pr_number, sub, post_id, ...}`).
 
 ## Workflow
 
@@ -146,7 +154,6 @@ autark hypothesis create --product fooproduct --code H07 --md @/tmp/hyp.md
 autark context <slug>/H07
 
 # check live sources for new replies (AgentMail threads, GH comments, Reddit, etc.)
-# — see plumcake's outcomes UI at localhost:8271/outcomes for a fast scan
 
 # if you take new action, start a fresh run
 RUN_ID=$(autark run start --hypothesis <slug>/H07)
@@ -175,8 +182,7 @@ Don't delete the hypothesis. Status `dead` keeps the history visible on the dash
 | What | Where |
 |---|---|
 | The dashboard | `https://autark.kushalsm.com` |
-| The API | `https://autark-api.kushalsokke.workers.dev` (CLI default) |
-| The CLI binary | `npm i -g autark` (or `node /path/to/autark/cli/autark.mjs`) |
+| The CLI binary | `npm i -g autark-cli` |
 | Your credentials | `~/.autark/credentials.json` (chmod 600) |
 | Product briefs | `products/<slug>.md` (local, you read but don't write) |
-| Plumcake (local) | `http://localhost:8271` — escalations, kanban, outcomes inbox |
+| Plumcake | `https://plumcake.kushalsm.com` — public bulletin board for blockers (see the plumcake skill) |
