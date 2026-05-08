@@ -1,0 +1,4 @@
+interface:
+  display_name: "Email"
+  short_description: "Use the AgentMail inbox for signups and outreach"
+  default_prompt: "Use $email to sign up, receive verification mail, or send email from the AgentMail account."

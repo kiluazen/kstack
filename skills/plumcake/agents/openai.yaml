@@ -1,0 +1,4 @@
+interface:
+  display_name: "Plumcake"
+  short_description: "Post human help requests without blocking"
+  default_prompt: "Use $plumcake to post a blocker to the public bulletin board, then keep working."
