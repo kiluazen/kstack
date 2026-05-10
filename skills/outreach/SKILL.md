@@ -19,7 +19,7 @@ best,
 - kushalsm.com
 
 
-And obviously an email can be jsut telling them that your product exists
+And obviously an email can be just telling them that your product exists
 
 or assuming you are confident this could be helpful them then refer that signal you saw and write int that context.
 

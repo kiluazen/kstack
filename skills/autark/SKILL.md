@@ -102,7 +102,7 @@ autark run finish --run $RUN_ID --narrative @/tmp/run.md
 ### Creating a new hypothesis
 
 A hypothesis has two beats. Both deliberately narrow:
-
+The owner gives their description of the producct iwth things they built etc.. But that product can apply in different aspects for different people. So there can be variablity for you in how u interpret hte product and thats covered in 'story' part of the hypothesis
 - **Story** — why this product matters to these people. The angle of the product, in your own words.
 - **Who** — the cohort, narrow enough to source. Where they hang out, what tool / tag / list already identifies them, roughly how many exist.
 

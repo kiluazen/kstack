@@ -1,26 +1,32 @@
 ---
 name: email
-description: Use when Codex needs to sign up for a service, log into a site, receive verification emails, or send outreach using Kushal's branded agent inbox.
+description: Use when an agent needs to sign up for a service, log into a site, receive verification emails, or send outreach via the user's autark-provisioned AgentMail inbox.
 ---
 
 # Email
 
-The canonical Autark agent email identity is **`kushal@kushalsm.com`**.
+Each autark user has their own AgentMail inbox (e.g. `kushal@kushalsm.com`, `laksh@kushalsm.com`) provisioned at onboarding. Use the inbox tied to **this** user's autark login for all outreach and signups.
 
-Use that address in outreach and signups unless the current run explicitly needs a legacy path for debugging old work.
+## Auth — read the token from `~/.autark/credentials.json`
 
-## Auth
+The autark installer drops a per-inbox API key into `~/.autark/credentials.json` (`agentmail_token` field). The same file holds the inbox email under `agentmail_email`. Every send goes through this token; it's scoped to one inbox so it can't read other users' mail.
 
-Both the CLI and the REST API use the same key.
+Standard prelude for any shell call:
 
 ```sh
-set -a
-. /Users/kushalsm/solo/.env
-set +a
-export AGENTMAIL_API_KEY="$KUSHALSM_AGENTMAIL"
+AGENTMAIL_API_KEY="${AGENTMAIL_API_KEY:-$(jq -r .agentmail_token ~/.autark/credentials.json 2>/dev/null)}"
+AGENTMAIL_EMAIL="${AGENTMAIL_EMAIL:-$(jq -r .agentmail_email ~/.autark/credentials.json 2>/dev/null)}"
+[ -z "$AGENTMAIL_API_KEY" ] && { echo "no agentmail token — run: autark onboard agentmail"; exit 1; }
+[ -z "$AGENTMAIL_EMAIL" ]   && { echo "no agentmail email — credentials missing agentmail_email"; exit 1; }
 ```
 
-The REST endpoints use the same key as `Authorization: Bearer $KUSHALSM_AGENTMAIL`.
+`AGENTMAIL_API_KEY` and `AGENTMAIL_EMAIL` are also honored from the environment (useful for one-off debugging) — credentials.json is just the default.
+
+The REST endpoints use the key as `Authorization: Bearer $AGENTMAIL_API_KEY`.
+
+### Legacy path (debugging only)
+
+The earlier flow read `KUSHALSM_AGENTMAIL` from `/Users/kushalsm/solo/.env` — that's an org-wide token that sees every inbox. Don't use it for normal sends; the per-inbox token is what every user runs with.
 
 ## Two paths: CLI and REST
 
@@ -39,7 +45,7 @@ There is no `--text-file` or stdin-fed flag, so escaping your way around this is
 ### REST (default — handles any body)
 
 ```sh
-curl -s -X POST "https://api.agentmail.to/v0/inboxes/kushal@kushalsm.com/messages/send" \
+curl -s -X POST "https://api.agentmail.to/v0/inboxes/$AGENTMAIL_EMAIL/messages/send" \
   -H "Authorization: Bearer $AGENTMAIL_API_KEY" \
   -H "Content-Type: application/json" \
   -d "$(jq -n --arg to person@example.com --arg subj "Subject" --rawfile body /tmp/body.txt \
@@ -52,7 +58,7 @@ The response is JSON with `message_id` and `thread_id` — save both into `evide
 
 ```sh
 agentmail inboxes:messages send \
-  --inbox-id kushal@kushalsm.com \
+  --inbox-id "$AGENTMAIL_EMAIL" \
   --to person@example.com \
   --subject "Subject" \
   --text "Plain ASCII body, no markdown, no leading colons or quotes."
@@ -67,7 +73,7 @@ To land in the existing thread (so the recipient sees it as a reply, not a new e
 ### REST
 
 ```sh
-curl -s -X POST "https://api.agentmail.to/v0/inboxes/kushal@kushalsm.com/messages/$MESSAGE_ID/reply" \
+curl -s -X POST "https://api.agentmail.to/v0/inboxes/$AGENTMAIL_EMAIL/messages/$MESSAGE_ID/reply" \
   -H "Authorization: Bearer $AGENTMAIL_API_KEY" \
   -H "Content-Type: application/json" \
   -d "$(jq -n --rawfile body /tmp/reply.txt '{text: $body}')"
@@ -79,7 +85,7 @@ curl -s -X POST "https://api.agentmail.to/v0/inboxes/kushal@kushalsm.com/message
 
 ```sh
 agentmail inboxes:messages reply \
-  --inbox-id kushal@kushalsm.com \
+  --inbox-id "$AGENTMAIL_EMAIL" \
   --message-id "$MESSAGE_ID" \
   --text "Plain reply body."
 ```
@@ -89,19 +95,19 @@ agentmail inboxes:messages reply \
 CLI is fine here — output is JSON.
 
 ```sh
-agentmail inboxes:threads list --inbox-id kushal@kushalsm.com --limit 30
-agentmail inboxes:threads retrieve --inbox-id kushal@kushalsm.com --thread-id <thread-id>
-agentmail inboxes:messages list --inbox-id kushal@kushalsm.com
-agentmail inboxes:messages retrieve --inbox-id kushal@kushalsm.com --message-id "$MESSAGE_ID"
+agentmail inboxes:threads list --inbox-id "$AGENTMAIL_EMAIL" --limit 30
+agentmail inboxes:threads retrieve --inbox-id "$AGENTMAIL_EMAIL" --thread-id <thread-id>
+agentmail inboxes:messages list --inbox-id "$AGENTMAIL_EMAIL"
+agentmail inboxes:messages retrieve --inbox-id "$AGENTMAIL_EMAIL" --message-id "$MESSAGE_ID"
 ```
 
 REST equivalents:
 
 ```
-GET /v0/inboxes/kushal@kushalsm.com/threads
-GET /v0/inboxes/kushal@kushalsm.com/threads/{thread_id}
-GET /v0/inboxes/kushal@kushalsm.com/messages
-GET /v0/inboxes/kushal@kushalsm.com/messages/{message_id}
+GET /v0/inboxes/$AGENTMAIL_EMAIL/threads
+GET /v0/inboxes/$AGENTMAIL_EMAIL/threads/{thread_id}
+GET /v0/inboxes/$AGENTMAIL_EMAIL/messages
+GET /v0/inboxes/$AGENTMAIL_EMAIL/messages/{message_id}
 ```
 
 ## Rules
