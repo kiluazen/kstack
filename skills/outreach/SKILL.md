@@ -39,8 +39,31 @@ Hi,
 best,
 - kushal
 
-This my calendly link you can use, for certain people for a meet.
-https://calendly.com/kushalsokke/new-meeting
+## Replies — get to a meeting, don't have a meeting in email
+
+When someone replies to an autark outreach with engagement (a real question, feedback, "tell me more", an offer to test), **send ONE short reply with the user's scheduler link.** That's it. Don't try to answer everything in email. Don't enter a back-and-forth.
+
+The scheduler link is whatever `autark settings show` returns under `scheduler_link` — never hardcode it. Always fetch it fresh, because the user can change it from the dashboard.
+
+Examples that work — almost trivially short. No pitch. No over-explaining the why.
+
+```
+Would love to talk more about this. 5 min chat?
+
+<scheduler_link>
+```
+
+```
+This is easier on a call. Grab 5 min:
+
+<scheduler_link>
+```
+
+If they asked one specific thing, answer it in one short line, then the ask. Nothing more. Two short sentences max + the link.
+
+**Do not** write paragraphs. **Do not** pitch. **Do not** say "Useful thing would be to compare against how you do it today" or any of that consultant talk. The reply exists to move them off email and onto a call. That's the whole job.
+
+**Hard rule**: never send a second meeting ask in the same thread. One ask per thread, ever. If they don't engage with it, the human picks it up themselves.
 
 Do not use dashes anywhere in the email "--" absolutely not.
 The desire to use dashes I think comes from wanting to write full sentences. Which you don't need to.
