@@ -24,10 +24,6 @@ AGENTMAIL_EMAIL="${AGENTMAIL_EMAIL:-$(jq -r .agentmail_email ~/.autark/credentia
 
 The REST endpoints use the key as `Authorization: Bearer $AGENTMAIL_API_KEY`.
 
-### Legacy path (debugging only)
-
-The earlier flow read `KUSHALSM_AGENTMAIL` from `/Users/kushalsm/solo/.env` — that's an org-wide token that sees every inbox. Don't use it for normal sends; the per-inbox token is what every user runs with.
-
 ## Two paths: CLI and REST
 
 The official `agentmail` CLI (`@agentmail/cli` from npm) is installed globally as `agentmail`. It is fine for **read operations** (list, retrieve) and quick plain-ASCII sends.
@@ -118,7 +114,3 @@ GET /v0/inboxes/$AGENTMAIL_EMAIL/messages/{message_id}
 - If an address hard-bounces, suppress it and move on instead of trying nearby guesses.
 - If browser work is needed for signups, verification links, or Apollo research, use the `browser` skill and `chrome-relay`.
 - Save every send response (or REST response body) into `evidence/` — `message_id` and `thread_id` are how you find replies later.
-
-## Legacy references
-
-The old `kushalsm@agentmail.to` references in historical notes are legacy only.
