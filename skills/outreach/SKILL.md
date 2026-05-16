@@ -16,7 +16,7 @@ dont' need all kind of signing
 A simple
 
 best,
-- kushalsm.com
+- kushal   ← but kushal is a *link* to the user's personal link (see signature section)
 
 
 And obviously an email can be just telling them that your product exists
@@ -38,6 +38,50 @@ Hi,
 
 best,
 - kushal
+
+## Signature — name is a hyperlink, send as HTML
+
+The signature is `- <name>` where `<name>` itself is a clickable link. This is the single biggest "who are you?" mitigator — without it the recipient has to type your name into google to find you. With it they hover and see the domain.
+
+To make the name actually clickable in Gmail (and every other client), send the email as `html`, not plain `text`. Markdown like `[kushal](kushalsm.com)` does NOT render in mail clients — it shows up literally. The email skill's REST send takes an `html` field; use that.
+
+**Signature line, as HTML:**
+
+```html
+<div>best,</div>
+<div>- <a href="https://kushalsm.com">kushal</a></div>
+```
+
+Plain-text bodies become HTML by wrapping each line in `<div>` (or `<p>`) and using `<br>` for vertical space. So a full outreach body looks like:
+
+```html
+<div>Hi Cam,</div>
+<div><br></div>
+<div>op-mini's InstantDB schema is exactly the graph shape I'm trying to understand.</div>
+<div><br></div>
+<div>I'm testing whether a Postico-style explorer for InstantDB is actually needed.</div>
+<div><br></div>
+<div>best,</div>
+<div>- <a href="https://kushalsm.com">kushal</a></div>
+```
+
+### Where to get the link + the name
+
+Both come from `autark settings show` — fetch fresh at the start of every outreach session, the user can change them from the dashboard.
+
+- `personal_link` → the URL the name links to. Twitter, personal site, product page — whatever the user has set.
+- If `personal_link` is `<unset>`, fall back to the URL of the active hypothesis's product (read it from the product brief or `autark context <slug>/<H##>`).
+- The display name: just the first name (`kushal`, `laksh`, etc.) — derived from the autark inbox prefix or the user's profile, lowercase.
+
+So before sending, your prep step looks like:
+
+```sh
+LINK=$(autark settings show | awk '$1=="personal_link" { print $2 }')
+[ "$LINK" = "<unset>" ] && LINK="<active product URL — read from the brief>"
+NAME=$(autark me | awk -F'@' '{print $1}')   # crude — refine if the inbox prefix isn't the right first name
+```
+
+Then build the HTML body with `- <a href="$LINK">$NAME</a>` at the end. Never hardcode `kushalsm.com` — that's only Kushal's link, and autark is multi-user.
 
 ## Replies — get to a meeting, don't have a meeting in email
 
