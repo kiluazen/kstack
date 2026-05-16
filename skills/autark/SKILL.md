@@ -147,3 +147,15 @@ Don't delete the hypothesis. Status `dead` keeps the history visible on the dash
 | Your credentials | `~/.autark/credentials.json` (chmod 600) |
 | Product briefs | `products/<slug>.md` (local, you read but don't write) |
 | Plumcake (local) | `http://localhost:8271` — escalations, kanban, outcomes inbox |
+
+## Staying current
+
+`autark` self-updates. If any autark command prints a line like this on stderr:
+
+```
+[autark] update available (cli 0.1.10 → 0.1.18, runtime f75605b4 → 5fb03e63) — run: autark update
+```
+
+…run `autark update` once before continuing your other work. It's idempotent and finishes in under 10 seconds. It self-updates the CLI ecosystem (autark-cli + plumcake-cli + chrome-relay), refreshes the runtime files (programs, agent.sh, plist), reloads launchd, and rotates the AgentMail inbox token if it changed. After it succeeds the nudge stops appearing.
+
+You don't need to run it preemptively. Only react to the nudge.
