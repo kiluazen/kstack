@@ -1,161 +1,132 @@
 ---
 name: autark
-description: Autark — running a market-discovery loop for a product, posting outreach, and recording it. Teaches the data model (products → hypotheses → runs → actions), the `autark` CLI surface, and the operating contract.
+description: Run Autark market-discovery loops for a product: create frozen hypotheses, start runs, log outreach/actions, write narratives, and use Plumcake when blocked.
 ---
 
 # Autark
 
-Autark takes a product and runs market-discovery experiments on it: form hypotheses, post outreach, observe what comes back. The autark CLI is infrastructure to help you do that.
+Use this skill to run market-discovery experiments for an Autark product. The job is to form narrow hypotheses, create market signal, and record every external touch through the `autark` CLI.
 
-## Operating contract
+## Operating Contract
 
-You are **permissionless**. The job is to create market signal, not to prepare work for a human to approve. If the next useful step is to send an email, DM a founder, submit a form, publish a post, or post a Reddit comment, do it.
+You are permissionless. If the next useful step is to send an email, DM a founder, submit a form, publish a post, comment on Reddit/HN, or open a PR, do it.
 
-When something is genuinely blocked — credentials, payments, a login, a judgment call, or a tool that isn't behaving — post to **Plumcake** and keep working through another channel. Plumcake is a bulletin board, not a pause button. (See the plumcake skill.)
+When you are genuinely blocked by credentials, payment, login, unclear judgment, or broken tooling, post to Plumcake and keep working through another channel. Plumcake is a bulletin board, not a pause button.
 
-## The data model
+## Data Model
 
-```
+```text
 product
-  ↓ has
-hypotheses    ← frozen bets. write-once. only `status` mutates afterward.
-  ↓ has
-runs          ← one execution attempt. holds a freeform `narrative_md` blob.
-  ↓ has
-actions       ← every external touch. one row per email, GH comment, Reddit post, etc.
+  has many hypotheses
+  has many runs through hypotheses
+  has many actions through runs
 ```
 
-Concepts to internalize:
+- `product`: the thing being tested.
+- `hypothesis`: a frozen bet. Create a new `H##` when the angle changes; do not rewrite old hypotheses.
+- `run`: one work session under one hypothesis. A run can stay open while waiting for replies.
+- `action`: one external touch, such as an email, GitHub comment, Reddit post, HN comment, PR, blog post, or Plumcake escalation.
+- `narrative_md`: your run summary: context, decisions, follow-ups, and what changed.
 
-- **Hypothesis = frozen bet.** Once created, the text doesn't change. If your understanding shifts, create a *new* `H##`, don't mutate the old one. 
-- **Run = one session of work.** You start a run, do the work, log actions as you go, then finish with a narrative. A run can stay "in progress" (no `finished_at`) while you wait for replies — fine. The next session starts a fresh run under the same hypothesis.
-- **Action = one external touch.** Email sent, GitHub comment posted, Reddit thread linked, Plumcake escalation. Polymorphic by `channel`. Body content for emails/comments stays in AgentMail/GitHub — you store the pointer (`agentmail_thread_id` or `url`), the dashboard fetches the live conversation at view time.
-- **Narrative = your prose.** Context, decisions, follow-ups, what you learned. Lives in `runs.narrative_md`.
+## CLI Surface
 
-## Tool surface
+The CLI talks to the Autark Worker. After `autark login`, credentials live in `~/.autark/credentials.json` for about 30 days.
 
-The CLI talks to a Worker; you don't manage credentials or schemas. One-time setup per machine is `autark login`; after that the token in `~/.autark/credentials.json` carries you for ~30 days.
+| Command | Purpose |
+| --- | --- |
+| `autark login send <email>` | Send a 6-digit login code |
+| `autark login verify <email> --code <code>` | Verify and save local credentials |
+| `autark me` | Print signed-in user |
+| `autark logout` | Remove local credentials |
+| `autark product upsert --slug <s> --name <n> [--url <u>] [--tagline <t>] [--visibility public\|private]` | Create/update a product card |
+| `autark product list` | List owned products |
+| `autark hypothesis create --product <slug> --code H## --md @./hyp.md [--title <t>] [--status active\|inactive\|dead]` | Create a frozen hypothesis |
+| `autark hypothesis status <slug>/<H##> --status active\|inactive\|dead` | Update only hypothesis status |
+| `autark run start --hypothesis <slug>/<H##>` | Start a run and print `RUN_ID` |
+| `autark log action --run <id> --channel <c> --title <t> [--url <u>] [--agentmail-thread-id <uuid>] [--recipient <email>] [--metadata @./meta.json]` | Log one external touch |
+| `autark run finish --run <id> --narrative @./run.md` | Finish a run with a narrative |
+| `autark context <slug>/<H##>` | Print hypothesis context, recent runs, actions, and narratives |
 
-| Command | What it does |
-|---|---|
-| `autark login send <email>` | Send a 6-digit magic code to that email |
-| `autark login verify <email> --code <code>` | Verify the code, save credentials locally |
-| `autark me` | Print signed-in user (id + email) |
-| `autark logout` | Wipe local credentials |
-| `autark product upsert --slug <s> --name <n> [--url <u>] [--tagline <t>] [--visibility public\|private]` | Create or update a product card. Idempotent on `slug`. |
-| `autark product list` | List products you own |
-| `autark hypothesis create --product <slug> --code H## --md @./hyp.md [--title <t>] [--status active\|inactive\|dead]` | Create a frozen hypothesis. Idempotent on `(product, code)`. |
-| `autark hypothesis status <slug>/<H##> --status active\|inactive\|dead` | Update only the status |
-| `autark run start --hypothesis <slug>/<H##>` | Start a new run; prints `RUN_ID` to stdout |
-| `autark log action --run <id> --channel <c> --title <t> [--url <u>] [--agentmail-thread-id <uuid>] [--recipient <email>] [--metadata @./meta.json]` | Log one outreach touch |
-| `autark context <slug>/<H##>` | Print the bundle: hypothesis text + recent runs + actions + narratives |
-
-`@./file` reads the value from disk — use this for hypothesis markdown and run narratives so you don't have to inline multi-line strings on the command line.
+Use `@./file` for multi-line markdown or JSON values instead of inlining large strings.
 
 ## Channels
 
-`channel` on an action is one of:
+Use one action per external touch.
 
-- `email` — outbound email via AgentMail. Always pass `--agentmail-thread-id` and `--recipient`.
-- `github` — comment on a GitHub issue. Pass `--url` to the issue or specific comment.
-- `pr` — pull request you opened or commented on. Pass `--url`.
-- `reddit` — Reddit post or comment. Pass `--url`.
-- `hn` — Hacker News post or comment. Pass `--url`.
-- `blog` — a blog post you published. Pass `--url`.
-- `gist` — a public gist. Pass `--url`.
-- `plumcake` — an escalation. Pass `--url plumcake://session/<uuid>`.
+| Channel | Required pointer |
+| --- | --- |
+| `email` | `--agentmail-thread-id` and `--recipient` |
+| `github` | `--url` to issue/comment |
+| `pr` | `--url` to PR |
+| `reddit` | `--url` to post/comment |
+| `hn` | `--url` to post/comment |
+| `blog` | `--url` |
+| `gist` | `--url` |
+| `plumcake` | `--url plumcake://session/<uuid>` |
 
-Add new channels by just using a new string — the schema is polymorphic. Use `--metadata @./meta.json` for channel-specific extras (`{repo, pr_number, sub, post_id, ...}`).
+New channel strings are allowed. Put channel-specific fields in `--metadata @./meta.json`.
 
-## Workflow
+## Run Workflow
 
-### Starting fresh on a hypothesis
+1. Read the product brief.
+2. Inspect prior context.
+3. Start a run.
+4. Do the work.
+5. Log every external touch as it happens.
+6. Finish with a narrative.
 
 ```sh
-# read product brief
-cat products/<slug>.md
-
-# orient — see what's already happened on this hypothesis
 autark context <slug>/H07
-
-# start a new session
 RUN_ID=$(autark run start --hypothesis <slug>/H07)
 
-# do the work, log every external touch as it happens
-autark log action --run $RUN_ID --channel email \
-  --title "Sarah Chen — wave-1 cold pitch" \
+autark log action --run "$RUN_ID" --channel email \
+  --title "Sarah Chen - wave-1 cold pitch" \
   --recipient sarah@example.com \
   --agentmail-thread-id 7f9a...
 
-autark log action --run $RUN_ID --channel github \
-  --title "vercel/next.js #54321 — added chrome-relay to README" \
-  --url https://github.com/vercel/next.js/issues/54321
-
-# write the narrative as you wrap
-cat > /tmp/run.md <<'MD'
-Targeted 5 high-fit founders this run. Sent 3 emails, opened 1 PR, posted 1 reddit comment.
-First reply expected by Tuesday — re-check then.
-MD
-autark run finish --run $RUN_ID --narrative @/tmp/run.md
+autark run finish --run "$RUN_ID" --narrative @./run.md
 ```
 
-### Creating a new hypothesis
+## Hypotheses
 
-A hypothesis has two beats. Both deliberately narrow:
-The owner gives their description of the producct iwth things they built etc.. But that product can apply in different aspects for different people. So there can be variablity for you in how u interpret hte product and thats covered in 'story' part of the hypothesis
-- **Story** — why this product matters to these people. The angle of the product, in your own words.
-- **Who** — the cohort, narrow enough to source. Where they hang out, what tool / tag / list already identifies them, roughly how many exist.
+A hypothesis has two short paragraphs:
 
-That's it. Two short paragraphs. If you can't write either narrowly, the hypothesis isn't ready to run and be actionable.
+- **Story**: why this product matters to this cohort.
+- **Who**: the narrow audience, where to source them, and why they are identifiable.
 
-Autark is going to run many hypotheses. Keep each one tight.
+If either paragraph is broad or vague, the hypothesis is not ready to run. Autark should test many small, sharp hypotheses rather than one fuzzy thesis.
 
-### Following up on an existing hypothesis
-
-```sh
-# what's the latest state?
-autark context <slug>/H07
-
-# check live sources for new replies (AgentMail threads, GH comments, Reddit, etc.)
-
-# if you take new action, start a fresh run
-RUN_ID=$(autark run start --hypothesis <slug>/H07)
-# ... log actions, finish ...
-```
-
-### Marking a hypothesis dead
+Create a new hypothesis when the bet changes. Mark bad bets dead instead of deleting them:
 
 ```sh
 autark hypothesis status <slug>/H07 --status dead
 ```
-Don't delete the hypothesis. Status `dead` keeps the history visible on the dashboard and tells the cron to stop re-running it.
 
 ## Guardrails
 
-- **Don't blast.** Cold-outreach baseline is 1–3% reply rate; sourcing better-fit targets is part of the work, not a substitute for it. To be clear writing automated emails or some reddit posting strategy that is not what we are doing. Every dm will be well researched and though through on why it maeks sense for them. that means we will not be doing 100s of emails an hr, but it will the 10 high quality outreachs with very relavant hypothesis.
-- **Hypotheses are frozen.** If the bet morphs or you think a different hypothesis might work, create a new `H##` — don't rewrite history.
-- **Each external touch = one `autark log action` call.** No batching, no shortcuts. The dashboard is only as honest as the log.
-- **When stuck, post to Plumcake** Friction that stays in your head doesn't get fixed.
+- Do not blast. Ten well-researched touches beat hundreds of generic sends.
+- Keep hypotheses immutable after creation.
+- Log each external touch with its own `autark log action`.
+- Keep narratives public-safe: what happened, why it mattered, and what should happen next.
+- Post stuck states to Plumcake instead of holding them in your head.
 
-## Where things live
+## Reference
 
-| What | Where |
-|---|---|
-| The dashboard | `https://autark.kushalsm.com` |
-| The API | `https://autark-api.kushalsokke.workers.dev` (CLI default) |
-| The CLI binary | `npm i -g autark` (or `node /path/to/autark/cli/autark.mjs`) |
-| Your credentials | `~/.autark/credentials.json` (chmod 600) |
-| Product briefs | `products/<slug>.md` (local, you read but don't write) |
-| Plumcake (local) | `http://localhost:8271` — escalations, kanban, outcomes inbox |
+| Thing | Location |
+| --- | --- |
+| Dashboard | `https://autark.sh` |
+| API | `https://autark-api.kushalsokke.workers.dev` |
+| CLI | `npm i -g autark` or `node /path/to/autark/cli/autark.mjs` |
+| Credentials | `~/.autark/credentials.json` |
+| Product briefs | `products/<slug>.md` |
+| Plumcake | `http://localhost:8271` |
 
-## Staying current
+## Staying Current
 
-`autark` self-updates. If any autark command prints a line like this on stderr:
+If an `autark` command prints an update notice, run:
 
+```sh
+autark update
 ```
-[autark] update available (cli 0.1.10 → 0.1.18, runtime f75605b4 → 5fb03e63) — run: autark update
-```
 
-…run `autark update` once before continuing your other work. It's idempotent and finishes in under 10 seconds. It self-updates the CLI ecosystem (autark-cli + plumcake-cli + chrome-relay), refreshes the runtime files (programs, agent.sh, plist), reloads launchd, and rotates the AgentMail inbox token if it changed. After it succeeds the nudge stops appearing.
-
-You don't need to run it preemptively. Only react to the nudge.
+Do not run it preemptively. React only to the nudge.

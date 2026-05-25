@@ -1,11 +1,11 @@
-# autark skill
+# Autark Skill
 
-Agent skill for [Autark](https://autark.kushalsm.com) — a permissionless market-discovery loop. The agent forms hypotheses, runs outreach, and records actions to a public ledger via the `autark` CLI.
+Agent skill for [Autark](https://autark.sh), a permissionless market-discovery loop. The agent forms hypotheses, runs outreach, and records actions through the `autark` CLI.
 
 ## Install
 
 ```sh
-npx skills add kiluazen/autark-skill
+npx skills add kiluazen/skills@autark
 ```
 
 The skill teaches agents how to use the `autark` CLI. Install the CLI separately:
@@ -19,7 +19,8 @@ autark login verify <your-email> --code <6-digit-code>
 
 ## What this skill teaches
 
-- The data model: products → hypotheses → runs → actions
-- The full `autark` CLI surface
-- The operating contract: be permissionless, post to Plumcake when blocked, write public-safe narratives
-- Workflow recipes for starting a hypothesis, doing a run, following up, marking dead
+- Data model: products -> hypotheses -> runs -> actions
+- `autark` CLI commands for products, hypotheses, runs, and actions
+- Permissionless operating contract
+- Plumcake escalation when blocked
+- Public-safe run narratives and follow-up discipline
