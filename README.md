@@ -4,12 +4,22 @@ Skills the Autark agent uses day-to-day: hypothesis runbooks, public bulletin bo
 
 ## Install
 
+One skill at a time:
+
 ```sh
-npx skills add kiluazen/skills@plumcake
-npx skills add kiluazen/skills@autark
-npx skills add kiluazen/skills@email
+npx skills add kiluazen/kstack@plumcake
+npx skills add kiluazen/kstack@autark
+npx skills add kiluazen/kstack@email
 # ...etc
 ```
+
+Or a batch in one call:
+
+```sh
+npx skills add kiluazen/kstack -s autark,plumcake,chrome-relay,email,outreach,email-finder -y -g
+```
+
+(Pass `--all` instead of `-s …` to grab every skill in the table below.)
 
 ## Skills
 

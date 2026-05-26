@@ -5,7 +5,7 @@ Agent skill for [Chrome Relay](https://www.npmjs.com/package/chrome-relay) — d
 ## Install
 
 ```sh
-npx skills add kiluazen/chrome-relay-skill
+npx skills add kiluazen/kstack@chrome-relay
 ```
 
 The skill teaches agents how to use the `chrome-relay` CLI. Install the CLI separately:

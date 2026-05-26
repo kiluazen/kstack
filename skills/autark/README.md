@@ -5,7 +5,7 @@ Agent skill for [Autark](https://autark.sh), a permissionless market-discovery l
 ## Install
 
 ```sh
-npx skills add kiluazen/skills@autark
+npx skills add kiluazen/kstack@autark
 ```
 
 The skill teaches agents how to use the `autark` CLI. Install the CLI separately:
