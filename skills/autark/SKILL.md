@@ -1,6 +1,6 @@
 ---
 name: autark
-description: Run Autark market-discovery loops for a product: create frozen hypotheses, start runs, log outreach/actions, write narratives, and use Plumcake when blocked.
+description: 'Run Autark market-discovery loops for a product: create frozen hypotheses, start runs, log outreach/actions, write narratives, and use Plumcake when blocked.'
 ---
 
 # Autark
