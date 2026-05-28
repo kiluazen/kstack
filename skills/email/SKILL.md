@@ -1,116 +1,101 @@
 ---
 name: email
-description: Use when an agent needs to sign up for a service, log into a site, receive verification emails, or send outreach via the user's autark-provisioned AgentMail inbox.
+description: Use when an agent needs to send outreach, reply to inbound, sign up for a service, or log into a site via the user's autark-provisioned AgentMail inbox. Everything goes through `autark mail`.
 ---
 
 # Email
 
-Each autark user has their own AgentMail inbox (e.g. `kushal@kushalsm.com`, `laksh@kushalsm.com`) provisioned at onboarding. Use the inbox tied to **this** user's autark login for all outreach and signups.
+Each autark user has their own AgentMail inbox provisioned at onboarding. All mail — sends, replies, inbox reads — goes through the `autark mail` CLI, which is already authenticated via `~/.autark/credentials.json`. Do not call `api.agentmail.to` directly. Do not use the `agentmail` npm CLI.
 
-## Auth — read the token from `~/.autark/credentials.json`
+## Auth
 
-The autark installer drops a per-inbox API key into `~/.autark/credentials.json` (`agentmail_token` field). The same file holds the inbox email under `agentmail_email`. Every send goes through this token; it's scoped to one inbox so it can't read other users' mail.
+`autark mail` reads the inbox token and address from `~/.autark/credentials.json` on every call. You do not need to set env vars or pass auth flags. If a command errors with `missing agentmail_token`, the user hasn't finished setup — run `autark mail setup --prefix <name>` once.
 
-Standard prelude for any shell call:
+`AGENTMAIL_API_KEY` / `AGENTMAIL_EMAIL` / `AGENTMAIL_INBOX_ID` are honored as overrides if set in the environment — useful only when running with a non-default inbox.
+
+## Lint every draft before sending
+
+Run `autark mail lint` on every draft (sends *and* replies) before `autark mail send`:
 
 ```sh
-AGENTMAIL_API_KEY="${AGENTMAIL_API_KEY:-$(jq -r .agentmail_token ~/.autark/credentials.json 2>/dev/null)}"
-AGENTMAIL_EMAIL="${AGENTMAIL_EMAIL:-$(jq -r .agentmail_email ~/.autark/credentials.json 2>/dev/null)}"
-[ -z "$AGENTMAIL_API_KEY" ] && { echo "no agentmail token — run: autark onboard agentmail"; exit 1; }
-[ -z "$AGENTMAIL_EMAIL" ]   && { echo "no agentmail email — credentials missing agentmail_email"; exit 1; }
+autark mail lint --body @draft.txt
 ```
 
-`AGENTMAIL_API_KEY` and `AGENTMAIL_EMAIL` are also honored from the environment (useful for one-off debugging) — credentials.json is just the default.
+Exit 0 = clean. Exit 1 = violations printed as JSON, each with a `rule`, `detail`, and `why`. Treat the output as **feedback, not a gate**. The rules catch common AI tells; they sometimes false-positive on a draft that's actually fine. Read each `why`, judge whether the rule applies to your specific message, fix the ones that land, override the ones that don't. The bar isn't "lint exit 0" — it's "would this email land as a real human note?"
 
-The REST endpoints use the key as `Authorization: Bearer $AGENTMAIL_API_KEY`.
+What lint checks:
 
-## Two paths: CLI and REST
+- **structure-word** — AI-tell vocabulary in the body (`structurally`, `fundamentally`, `specifically`, `essentially`, `the key insight`, `that's exactly`, etc.). Humans writing cold email don't reach for these. Describe the thing directly.
+- **em-dash** — any `—` character. Strong AI tell in outbound. Use commas, periods, or new line breaks. (Override if the recipient's own writing uses them and you're mirroring tone.)
+- **body-url** — any URL outside a markdown `[name](url)` or HTML `<a href>` anchor. The product link belongs in the signature anchor; a bare URL mid-body reads as an A/B variant.
+- **too-many-questions** — more than one `?`. Pick the single question that gives you the most signal. (Override fine for replies answering multiple direct asks.)
+- **compound-question** — "are you X or Y...?" patterns. Drop the `or` and pick the more specific half.
+- **too-long** — >400 chars before the signature (~4–6 short lines). Past that you're explaining, not asking.
+- **no-anchor-sig** — signature has no clickable name link. Without an `<a href>` / `[name](url)` in the sig, the recipient has no quick path to figure out who you are.
 
-The official `agentmail` CLI (`@agentmail/cli` from npm) is installed globally as `agentmail`. It is fine for **read operations** (list, retrieve) and quick plain-ASCII sends.
-
-For **writes** (send, reply), default to **REST**. The CLI's flag-value parser is YAML-based and rejects common content with `Incorrect Usage: invalid value (... failed to parse as YAML)`. Concretely, these break the CLI:
-
-- Any flag value beginning with `[` — e.g. `--subject "[skill-test] ..."`
-- Bodies containing markdown list items that look like YAML, e.g. a line `- > A blockquote line` or `- some list item` followed by content the YAML parser doesn't accept.
-- Any `--text` containing fenced code blocks with backticks adjacent to certain patterns.
-
-There is no `--text-file` or stdin-fed flag, so escaping your way around this is a rabbit hole. Just use REST.
+If most violations land and you can't write a clean draft after 2 rewrites: the issue is upstream of the regex. Re-read `~/.claude/skills/outreach/SKILL.md` and ask whether you should send at all.
 
 ## Send a message
 
-### REST (default — handles any body)
-
 ```sh
-curl -s -X POST "https://api.agentmail.to/v0/inboxes/$AGENTMAIL_EMAIL/messages/send" \
-  -H "Authorization: Bearer $AGENTMAIL_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d "$(jq -n --arg to person@example.com --arg subj "Subject" --rawfile body /tmp/body.txt \
-        '{to: [$to], subject: $subj, text: $body}')"
-```
-
-The response is JSON with `message_id` and `thread_id` — save both into `evidence/`.
-
-### CLI (only for short, plain bodies)
-
-```sh
-agentmail inboxes:messages send \
-  --inbox-id "$AGENTMAIL_EMAIL" \
+autark mail send \
   --to person@example.com \
   --subject "Subject" \
-  --text "Plain ASCII body, no markdown, no leading colons or quotes."
+  --text @./draft.txt \
+  --run-id $RUN_ID
 ```
 
-If `--text` rejects the body with `Incorrect Usage: invalid value`, switch to REST. Don't try to escape your way through it.
+Multi-line bodies are fine — `--text @./file` reads from disk so there's no shell-escaping or YAML-parser dance. Use `--text "literal string"` only for one-liners.
+
+**Always pass `--run-id`.** With it, `autark mail send` records the autark action itself (channel=email, recipient, thread_id, message_id, subject) so you don't need a separate `autark log action`. Without `--run-id`, the send still works but isn't tracked — only do that for non-outreach signups/login flows where there's no autark run.
+
+Other flags: `--cc`, `--bcc`, `--reply-to`, `--label`, `--attachment` (each repeatable or comma-separated), `--dry-run` to print the payload without sending, `--title` to override the auto-generated action title.
+
+Response is JSON with `message_id`, `thread_id`, and (when `--run-id` was passed) `autark_action_id`. Save it.
 
 ## Reply in a thread
 
-To land in the existing thread (so the recipient sees it as a reply, not a new email):
-
-### REST
-
 ```sh
-curl -s -X POST "https://api.agentmail.to/v0/inboxes/$AGENTMAIL_EMAIL/messages/$MESSAGE_ID/reply" \
-  -H "Authorization: Bearer $AGENTMAIL_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d "$(jq -n --rawfile body /tmp/reply.txt '{text: $body}')"
-```
-
-`$MESSAGE_ID` is the original message's `message_id` (with the angle brackets, e.g. `<CAPoqp...@mail.gmail.com>`). Get it from the thread listing.
-
-### CLI equivalent
-
-```sh
-agentmail inboxes:messages reply \
-  --inbox-id "$AGENTMAIL_EMAIL" \
+autark mail reply \
   --message-id "$MESSAGE_ID" \
-  --text "Plain reply body."
+  --text @./reply.txt \
+  --run-id $RUN_ID
 ```
+
+`$MESSAGE_ID` is the message id of the message you're replying to (the inbound one you got, or your own original send). It's what `mail send` / `mail message` / `mail thread` return.
+
+Use `autark mail reply-all` to reply to all recipients, and `autark mail forward --message-id <id> --to <addr> [--text @body.txt]` to forward.
 
 ## Read inbox
 
-CLI is fine here — output is JSON.
+```sh
+autark mail threads [--limit 30]               # list threads
+autark mail thread <thread_id>                 # one thread + all messages
+autark mail messages [--limit 30]              # flat message list
+autark mail message <message_id>               # single message
+autark mail raw <message_id>                   # full raw payload
+autark mail attachment --message-id <id> --attachment-id <id> [--out file]
+```
+
+JSON output throughout. No auth flags — credentials are read from disk.
+
+## Escape hatch
+
+If AgentMail ships a new endpoint that `autark mail` doesn't wrap yet:
 
 ```sh
-agentmail inboxes:threads list --inbox-id "$AGENTMAIL_EMAIL" --limit 30
-agentmail inboxes:threads retrieve --inbox-id "$AGENTMAIL_EMAIL" --thread-id <thread-id>
-agentmail inboxes:messages list --inbox-id "$AGENTMAIL_EMAIL"
-agentmail inboxes:messages retrieve --inbox-id "$AGENTMAIL_EMAIL" --message-id "$MESSAGE_ID"
+autark mail request GET /inboxes/$EMAIL/some/new/endpoint
+autark mail request POST /inboxes/$EMAIL/foo --body @payload.json
 ```
 
-REST equivalents:
-
-```
-GET /v0/inboxes/$AGENTMAIL_EMAIL/threads
-GET /v0/inboxes/$AGENTMAIL_EMAIL/threads/{thread_id}
-GET /v0/inboxes/$AGENTMAIL_EMAIL/messages
-GET /v0/inboxes/$AGENTMAIL_EMAIL/messages/{message_id}
-```
+Reuses the same authenticated session. Use this only when no wrapped command fits.
 
 ## Rules
 
-- Do not guess email permutations from name + domain.
-- Before first outbound contact, verify the address through Apollo or another concrete browser-based source.
+- Lint every draft (sends and replies). Treat the output as feedback, override the rules that don't apply.
+- Pass `--run-id` on every outreach send/reply so the action lands in autark and the reply-state cron can detect engagement.
+- Do not guess email permutations from name + domain. Use the `email-finder` skill before first contact — verify the address through a concrete source (Apollo, GitHub commits, etc.).
 - If the contact is high value or the source is shaky, corroborate with a second signal.
-- If an address hard-bounces, suppress it and move on instead of trying nearby guesses.
-- If browser work is needed for signups, verification links, or Apollo research, use the `browser` skill and `chrome-relay`.
-- Save every send response (or REST response body) into `evidence/` — `message_id` and `thread_id` are how you find replies later.
+- If an address hard-bounces, suppress it and move on. Don't try nearby guesses.
+- If browser work is needed for signups, verification links, or Apollo research, use the `chrome-relay` skill.
+- The `autark mail send` response (or `--dry-run` payload) is the canonical record — `message_id` + `thread_id` are how you find replies later. If you passed `--run-id`, autark already stored them under the action.

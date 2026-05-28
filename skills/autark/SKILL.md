@@ -24,7 +24,7 @@ product
 
 - `product`: the thing being tested.
 - `hypothesis`: a frozen bet. Create a new `H##` when the angle changes; do not rewrite old hypotheses.
-- `run`: one work session under one hypothesis. A run can stay open while waiting for replies.
+- `run`: one work session under one hypothesis.
 - `action`: one external touch, such as an email, GitHub comment, Reddit post, HN comment, PR, blog post, or Plumcake escalation.
 - `narrative_md`: your run summary: context, decisions, follow-ups, and what changed.
 
@@ -51,20 +51,22 @@ Use `@./file` for multi-line markdown or JSON values instead of inlining large s
 
 ## Channels
 
-Use one action per external touch.
+One action per external touch. **Email is a special case** — every other channel needs a manual `autark log action`; email is auto-logged when you pass `--run-id` to `autark mail send` / `mail reply`, so do NOT call `autark log action` for the same send (would create a duplicate action row, inflating reply counts).
 
-| Channel | Required pointer |
-| --- | --- |
-| `email` | `--agentmail-thread-id` and `--recipient` |
-| `github` | `--url` to issue/comment |
-| `pr` | `--url` to PR |
-| `reddit` | `--url` to post/comment |
-| `hn` | `--url` to post/comment |
-| `blog` | `--url` |
-| `gist` | `--url` |
-| `plumcake` | `--url plumcake://session/<uuid>` |
+| Channel | How you perform it | How it gets logged |
+| --- | --- | --- |
+| `email` | `autark mail send --run-id <id>` (or `mail reply --run-id <id>`) | **Auto-logged.** Don't call `autark log action`. |
+| `github` | `gh issue comment` / direct API | `autark log action --channel github --url <comment-permalink>` |
+| `pr` | `gh pr review` / direct API | `autark log action --channel pr --url <pr-url>` |
+| `reddit` | chrome-relay (browser) | `autark log action --channel reddit --url <comment-permalink>` |
+| `hn` | chrome-relay (browser) | `autark log action --channel hn --url <comment-permalink>` |
+| `blog` | chrome-relay / RSS | `autark log action --channel blog --url <comment-permalink>` |
+| `gist` | `gh gist create` | `autark log action --channel gist --url <gist-url>` |
+| `plumcake` | Plumcake CLI | `autark log action --channel plumcake --url plumcake://session/<uuid>` |
 
 New channel strings are allowed. Put channel-specific fields in `--metadata @./meta.json`.
+
+**Always log the URL to YOUR comment, not the parent thread.** The reply-state cron extracts the comment id from the URL to detect engagement on your specific comment. A parent-thread URL is too coarse — it can't tell whether someone replied to you or to a sibling comment.
 
 ## Run Workflow
 
@@ -79,10 +81,16 @@ New channel strings are allowed. Put channel-specific fields in `--metadata @./m
 autark context <slug>/H07
 RUN_ID=$(autark run start --hypothesis <slug>/H07)
 
-autark log action --run "$RUN_ID" --channel email \
-  --title "Sarah Chen - wave-1 cold pitch" \
-  --recipient sarah@example.com \
-  --agentmail-thread-id 7f9a...
+# email: --run-id on the send auto-logs the action (channel=email, thread_id, recipient)
+autark mail send --run-id "$RUN_ID" \
+  --to sarah@example.com \
+  --subject "..." \
+  --text @./draft.txt
+
+# github / reddit / hn / etc.: log explicitly with the URL of YOUR comment
+autark log action --run "$RUN_ID" --channel github \
+  --title "owner/repo#123 — sibling positioning comment" \
+  --url https://github.com/owner/repo/issues/123#issuecomment-4467011838
 
 autark run finish --run "$RUN_ID" --narrative @./run.md
 ```
@@ -106,7 +114,7 @@ autark hypothesis status <slug>/H07 --status dead
 
 - Do not blast. Ten well-researched touches beat hundreds of generic sends.
 - Keep hypotheses immutable after creation.
-- Log each external touch with its own `autark log action`.
+- Log each external touch — except email sent via `autark mail send --run-id`, which auto-logs.
 - Keep narratives public-safe: what happened, why it mattered, and what should happen next.
 - Post stuck states to Plumcake instead of holding them in your head.
 
@@ -118,8 +126,6 @@ autark hypothesis status <slug>/H07 --status dead
 | API | `https://autark-api.kushalsokke.workers.dev` |
 | CLI | `npm i -g autark` or `node /path/to/autark/cli/autark.mjs` |
 | Credentials | `~/.autark/credentials.json` |
-| Product briefs | `products/<slug>.md` |
-| Plumcake | `http://localhost:8271` |
 
 ## Staying Current
 
@@ -128,5 +134,4 @@ If an `autark` command prints an update notice, run:
 ```sh
 autark update
 ```
-
-Do not run it preemptively. React only to the nudge.
+It's important to run atuark update whenever you see it, Cause many of your problems could be solved by that.
