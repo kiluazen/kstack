@@ -13,6 +13,19 @@ Each autark user has their own AgentMail inbox provisioned at onboarding. All ma
 
 `AGENTMAIL_API_KEY` / `AGENTMAIL_EMAIL` / `AGENTMAIL_INBOX_ID` are honored as overrides if set in the environment — useful only when running with a non-default inbox.
 
+## Plain text vs HTML — pick the right flag
+
+The CLI accepts both `--text` and `--html`, matching the AgentMail / Mailgun / SendGrid / Resend / Postmark convention.
+
+- `--text @file` — ships as `text/plain`. Recipient sees the bytes verbatim. Any HTML tags (`<div>`, `<p>`, `<br>`, `<a>`, etc.) show up as **literal text** in the recipient's inbox.
+- `--html @file` — ships as `text/html`. Recipient's email client renders it as a styled email with real anchors, paragraph breaks, etc.
+
+**The rule for outreach signatures:** if you put a link in the signature / footer of the email, the link must be **embedded in the word** (e.g. the name "kushal" is itself the clickable link), never a bare URL on its own line. A bare-URL signature is not the shape autark sends.
+
+To get an embedded-link signature, you have to use `--html` — `--text` would render the `<a href>` markup as literal text in Gmail / Outlook. This is what broke on 2026-05-28: 6 cold emails went out with `<a href="https://autark.sh">kushal</a>` in `--text`, and every recipient saw the raw markup in their Gmail. See `autark/docs/email-html-in-text-incident.md` for the postmortem.
+
+If your send doesn't have a signature link (signup verification, test pings, system messages), plain `--text` is fine.
+
 ## Lint every draft before sending
 
 Run `autark mail lint` on every draft (sends *and* replies) before `autark mail send`:
@@ -23,6 +36,8 @@ autark mail lint --body @draft.txt
 
 Exit 0 = clean. Exit 1 = violations printed as JSON, each with a `rule`, `detail`, and `why`. Treat the output as **feedback, not a gate**. The rules catch common AI tells; they sometimes false-positive on a draft that's actually fine. Read each `why`, judge whether the rule applies to your specific message, fix the ones that land, override the ones that don't. The bar isn't "lint exit 0" — it's "would this email land as a real human note?"
 
+Lint inspects content quality only — AI-tells, hedging, length, signature shape. It does not police markup mechanics (that's the convention above + your judgment). Lint the body you're about to ship: if you're sending `--html`, lint the html file; if you're sending `--text`, lint the text file. Lint reads prose either way.
+
 What lint checks:
 
 - **structure-word** — AI-tell vocabulary in the body (`structurally`, `fundamentally`, `specifically`, `essentially`, `the key insight`, `that's exactly`, etc.). Humans writing cold email don't reach for these. Describe the thing directly.
@@ -32,25 +47,30 @@ What lint checks:
 - **compound-question** — "are you X or Y...?" patterns. Drop the `or` and pick the more specific half.
 - **too-long** — >400 chars before the signature (~4–6 short lines). Past that you're explaining, not asking.
 - **no-anchor-sig** — signature has no clickable name link. Without an `<a href>` / `[name](url)` in the sig, the recipient has no quick path to figure out who you are.
-- **html-in-text** — body contains layout HTML tags (`<div>`, `<p>`, `<br>`, `<span>`, etc.). `--text` is sent as text/plain; the recipient sees the raw markup. Use blank lines for paragraph breaks. The signature `<a href>` is whitelisted. Do NOT override this rule.
 
 If most violations land and you can't write a clean draft after 2 rewrites: the issue is upstream of the regex. Re-read `~/.claude/skills/outreach/SKILL.md` and ask whether you should send at all.
 
-## Send a message
+## Send a message — cold outreach (html, embedded-link sig)
 
 ```sh
 autark mail send \
   --to person@example.com \
   --subject "Subject" \
-  --text @./draft.txt \
+  --html @./body.html \
   --run-id $RUN_ID
 ```
 
-Multi-line bodies are fine — `--text @./file` reads from disk so there's no shell-escaping or YAML-parser dance. Use `--text "literal string"` only for one-liners.
+`body.html`:
 
-**`--text` is plain text. Do not put HTML layout markup in it.** A draft with `<div>Hi</div>`, `<p>...</p>`, `<br>`, or `<span>` tags goes out as text/plain — the recipient sees the raw markup in their Gmail / Outlook (we have screenshots: this actually happened on 2026-05-28, 6 recipients saw `<div>Hi Olivier,</div>` as literal text). For paragraph breaks, use a blank line. The lint's `html-in-text` rule catches this; do not override it. The **only** HTML allowed in `--text` is the signature link, `<a href="https://yourdomain">name</a>` — that one tag is fine and the `no-anchor-sig` rule actually requires it.
+```html
+<p>Hi Karl,</p>
+<p>one sentence quoting them.</p>
+<p>one sentence on what you built.</p>
+<p>one specific question?</p>
+<p>best,<br><a href="https://autark.sh">kushal</a></p>
+```
 
-If you genuinely want a styled HTML email, use `--html @./body.html` (separate flag) AND pass `--text @./fallback.txt` as the plaintext fallback for clients that don't render HTML. For cold outreach you almost never want this — plain text reads as a peer note, HTML reads as a campaign send.
+Recipient sees a styled email with "kushal" as a clickable link to autark.sh. This is the default shape for any cold outreach send.
 
 **Always pass `--run-id`.** With it, `autark mail send` records the autark action itself (channel=email, recipient, thread_id, message_id, subject) so you don't need a separate `autark log action`. Without `--run-id`, the send still works but isn't tracked — only do that for non-outreach signups/login flows where there's no autark run.
 
@@ -58,18 +78,33 @@ Other flags: `--cc`, `--bcc`, `--reply-to`, `--label`, `--attachment` (each repe
 
 Response is JSON with `message_id`, `thread_id`, and (when `--run-id` was passed) `autark_action_id`. Save it.
 
+## Send a message — non-outreach (plain text, no link)
+
+For signup verifications, test pings, system messages, or any send where there is no signature link to worry about:
+
+```sh
+autark mail send \
+  --to verify@signup-form.test \
+  --subject "Subject" \
+  --text @./body.txt
+```
+
+Plain `--text` is fine here. No `--run-id` because there's no autark run.
+
 ## Reply in a thread
 
 ```sh
 autark mail reply \
   --message-id "$MESSAGE_ID" \
-  --text @./reply.txt \
+  --html @./reply.html \
   --run-id $RUN_ID
 ```
 
+Same shape rules: if your reply has a signature link, use `--html`. If you're answering a one-liner with a one-liner and no sig link, `--text` is fine.
+
 `$MESSAGE_ID` is the message id of the message you're replying to (the inbound one you got, or your own original send). It's what `mail send` / `mail message` / `mail thread` return.
 
-Use `autark mail reply-all` to reply to all recipients, and `autark mail forward --message-id <id> --to <addr> [--text @body.txt]` to forward.
+Use `autark mail reply-all` to reply to all recipients, and `autark mail forward --message-id <id> --to <addr> [--html @body.html]` to forward.
 
 ## Read inbox
 
@@ -97,6 +132,8 @@ Reuses the same authenticated session. Use this only when no wrapped command fit
 
 ## Rules
 
+- For any send whose signature contains a link, use `--html` so the link is embedded in the name. Bare-URL signatures are not the shape autark sends.
+- Plain `--text` is fine for sends without a signature link (signup verifications, system pings, test sends).
 - Lint every draft (sends and replies). Treat the output as feedback, override the rules that don't apply.
 - Pass `--run-id` on every outreach send/reply so the action lands in autark and the reply-state cron can detect engagement.
 - Do not guess email permutations from name + domain. Use the `email-finder` skill before first contact — verify the address through a concrete source (Apollo, GitHub commits, etc.).
