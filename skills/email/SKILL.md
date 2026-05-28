@@ -32,6 +32,7 @@ What lint checks:
 - **compound-question** — "are you X or Y...?" patterns. Drop the `or` and pick the more specific half.
 - **too-long** — >400 chars before the signature (~4–6 short lines). Past that you're explaining, not asking.
 - **no-anchor-sig** — signature has no clickable name link. Without an `<a href>` / `[name](url)` in the sig, the recipient has no quick path to figure out who you are.
+- **html-in-text** — body contains layout HTML tags (`<div>`, `<p>`, `<br>`, `<span>`, etc.). `--text` is sent as text/plain; the recipient sees the raw markup. Use blank lines for paragraph breaks. The signature `<a href>` is whitelisted. Do NOT override this rule.
 
 If most violations land and you can't write a clean draft after 2 rewrites: the issue is upstream of the regex. Re-read `~/.claude/skills/outreach/SKILL.md` and ask whether you should send at all.
 
@@ -46,6 +47,10 @@ autark mail send \
 ```
 
 Multi-line bodies are fine — `--text @./file` reads from disk so there's no shell-escaping or YAML-parser dance. Use `--text "literal string"` only for one-liners.
+
+**`--text` is plain text. Do not put HTML layout markup in it.** A draft with `<div>Hi</div>`, `<p>...</p>`, `<br>`, or `<span>` tags goes out as text/plain — the recipient sees the raw markup in their Gmail / Outlook (we have screenshots: this actually happened on 2026-05-28, 6 recipients saw `<div>Hi Olivier,</div>` as literal text). For paragraph breaks, use a blank line. The lint's `html-in-text` rule catches this; do not override it. The **only** HTML allowed in `--text` is the signature link, `<a href="https://yourdomain">name</a>` — that one tag is fine and the `no-anchor-sig` rule actually requires it.
+
+If you genuinely want a styled HTML email, use `--html @./body.html` (separate flag) AND pass `--text @./fallback.txt` as the plaintext fallback for clients that don't render HTML. For cold outreach you almost never want this — plain text reads as a peer note, HTML reads as a campaign send.
 
 **Always pass `--run-id`.** With it, `autark mail send` records the autark action itself (channel=email, recipient, thread_id, message_id, subject) so you don't need a separate `autark log action`. Without `--run-id`, the send still works but isn't tracked — only do that for non-outreach signups/login flows where there's no autark run.
 
