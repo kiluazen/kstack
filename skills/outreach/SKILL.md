@@ -21,7 +21,17 @@ best,
 
 And obviously an email can be just telling them that your product exists
 
-or assuming you are confident this could be helpful them then refer that signal you saw and write int that context.
+or assuming you are confident this could be helpful them then refer that signal you saw and write in that context.
+
+## If you reference it, link it — embedded in the words
+
+When you mention a specific thing the recipient made or that you're riffing on — their GitHub issue, a PR, their comment, a blog post, a Lobsters/HN thread, a spec you're both circling (DBSC, a CDP flag, whatever) — **embed the link in the words that name it.** Hyperlink `#1480`, or `your DBSC comment`, or `your post on X`. The anchor text stays human; the URL hides under it.
+
+**Never assert you read or saw something without linking it.** "your issue nails it", "DBSC-as-attestation is where I landed too", "I saw your comment" — with no link, that reads as a bot that didn't actually read the thing. To a technical recipient this is the single biggest spam tell. It is the difference between "a human read my stuff and reached out" and "a script scraped my name." Two of the user's best-fit prospects independently called the outreach spam for exactly this — one of them: *"add links to what they're referring to. The internet needs less spam and more humans."* Don't be that email.
+
+This is the **embedded-anchor** form, not a bare URL. A naked `https://...` sitting mid-paragraph still reads as a campaign/A-B send — keep the *product* link in the signature only (see below). The *reference* link lives inside the anchor text of the artifact you're naming. So: link the thing you cite (in the words), product link in the sig, nothing bare in the body.
+
+**And consider the channel.** If the signal you found is a *public* post (a Lobsters/HN/GitHub comment), the most genuine move is often to engage right there, in the thread they opted into — not to cold-email a stranger about something they said in public. Cold email about a public comment, undisclosed, is the invasive version of the same idea even when your relevance is real.
 
 The way i like the eamil to look like, short lines with spaces in between 
 
