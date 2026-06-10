@@ -27,9 +27,12 @@ product
 - `hypothesis`: a frozen bet. Create a new `H##` when the angle changes; do not rewrite old hypotheses.
 - `person`: one deduped human — identity (`full_name`, `primary_email`, `handles`) plus enrichment (`headline`, `bio`, `signals`). No status, rank, or angle lives here.
 - `lead`: one person under one hypothesis — carries the `angle` (why this human belongs under this bet) and a `status` (`sourced → ready → contacted → replied → done`, `dead` to kill). The same human under two bets is one person, two leads.
+- `touch`: one outreach interaction on one lead — `channel`, `direction` (`out`|`in`), `thread_ref` (AgentMail thread id or the URL of YOUR comment), `summary`. Bodies stay external; the touch is a pointer.
 - `run`: one work session under one hypothesis, sealed with `narrative_md`: context, decisions, follow-ups, and what changed.
 
 Re-sourcing the same email or handle under the same product updates the existing person instead of duplicating — ids are deterministic, so `lead add` is idempotent.
+
+**The CLI gives primitives, and every write is against an explicit id.** Autark never guesses which lead an email or interaction belongs to — you name the `lead_id`, or nothing is recorded. Read ids from `autark context` before writing.
 
 ## CLI Surface
 
@@ -48,19 +51,33 @@ The CLI talks to the Autark Worker. After `autark login`, credentials live in `~
 | `autark run start --hypothesis-id <id>` | Start a run and print `RUN_ID` |
 | `autark lead template` | Print the minimal lead payload shape |
 | `autark lead add --hypothesis-id <id> --run-id <id> --input @/tmp/lead.json` | Upsert a person + create a lead in one write |
+| `autark mail send --lead-id <id> --to <email> --subject <s> --text @draft.txt` | Send email AND record the touch AND advance status, atomically |
+| `autark touch add --lead-id <id> --channel <c> [--direction out\|in] [--thread-ref <ref>]` | Record a non-email interaction on a lead (advances status) |
+| `autark lead status <lead-id> --status <s>` | Explicit status write — rarely needed; touches advance status automatically |
 | `autark run finish --run-id <id> --narrative @./run.md` | Finish a run with a narrative |
 | `autark context <slug>[/<H##>]` | Product or hypothesis context: brief, feedback, hypotheses, leads, runs |
 | `autark feedback record\|delete` | Leave / remove an operator nudge on a product or hypothesis |
 
 Use `@./file` for multi-line markdown or JSON values instead of inlining large strings.
 
-## Sourcing, Not Messaging
+## Two Separate Jobs: Filling the Sheet, Draining the Sheet
 
-Sourcing and outreach are separate layers. The loop you run here is **collection**: find people, enrich them, write angles, fill the sheet. You do not message anyone — no emails, no DMs, no posts, no comments. A later outreach stage drains the ranked, ready leads.
-
-The one exception: when the operator explicitly runs an outreach session, `autark mail send --run-id <id>` / `mail reply --run-id <id>` record the send against the run automatically — there is no separate logging step, and nothing else to log.
+**Sourcing** fills the sheet: find people, enrich them, write angles, record leads. A sourcing run sends nothing — no emails, no DMs, no posts, no comments.
 
 A lead payload needs, at minimum, enough identity to dedupe (`primary_email`, a handle, or `full_name`) and a `lead.angle` that answers: why does this human belong under this bet? `bio` and `signals` are enrichment, not ceremony. If you cannot write a concrete angle, skip the person — one real prospect beats five padded rows.
+
+**Outreach** drains the sheet, and only when the operator explicitly asks for it. Read the ready leads from `autark context <slug>/<H##>` — each carries the person's identity, headline, and the angle, which is the context for the message. Then send against the explicit lead id:
+
+```sh
+autark mail send --lead-id "$LEAD_ID" --to person@example.com \
+  --subject "..." --text @draft.txt
+```
+
+One command does three things atomically: sends the email, records a `touch` (channel `email`, direction `out`, `thread_ref` = the AgentMail thread), and advances the lead `ready → contacted`. **The send is the bookkeeping** — never follow up with a separate status or logging command for the same send.
+
+For non-email channels (a GitHub comment, a Reddit reply), perform the action first, then record it: `autark touch add --lead-id <id> --channel github --thread-ref <permalink-to-YOUR-comment>`. Same rule: the touch write advances the status. `autark lead status` exists as an explicit override (e.g. marking a lead `dead`), not as part of the normal flow.
+
+Replies are recorded as touches with `--direction in`, which advances the lead to `replied`.
 
 ## Run Workflow
 
@@ -103,7 +120,9 @@ autark hypothesis status <slug>/H07 --status dead
 - Quality gates inclusion. Skip anyone whose angle you cannot write concretely.
 - Keep hypotheses immutable after creation.
 - Prefer first-party emails (commit email, personal-site mailto, published address); mark `email_status` honestly (`verified` / `guessed` / `none`).
-- Never advance a lead past `ready` — that is the outreach layer's job.
+- During sourcing, never advance a lead past `ready` and never send anything. Outreach happens only when the operator asks, and always against an explicit `--lead-id`.
+- Do not blast. Ten well-researched touches beat hundreds of generic sends.
+- Status moves with touches, not by hand. Reach for `lead status` only to override (e.g. `dead`), never to mirror a send you just made — the send already recorded it.
 - Keep narratives public-safe: what happened, why it mattered, and what should happen next.
 - Post stuck states to Plumcake instead of holding them in your head.
 
