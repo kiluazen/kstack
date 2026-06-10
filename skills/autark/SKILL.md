@@ -53,7 +53,9 @@ The CLI talks to the Autark Worker. After `autark login`, credentials live in `~
 | `autark lead add --hypothesis-id <id> --run-id <id> --input @/tmp/lead.json` | Upsert a person + create a lead in one write |
 | `autark mail send --lead-id <id> --to <email> --subject <s> --text @draft.txt` | Send email AND record the touch AND advance status, atomically |
 | `autark touch add --lead-id <id> --channel <c> [--direction out\|in] [--thread-ref <ref>]` | Record a non-email interaction on a lead (advances status) |
-| `autark lead status <lead-id> --status <s>` | Explicit status write — rarely needed; touches advance status automatically |
+| `autark lead show <lead-id>` | One lead fully loaded: person, bet, status, ordered touch log with ids — run this when handed a lead link |
+| `autark touch mute <touch-id>` | Judge an inbound touch a non-reply (ticket bot, autoresponder); lead verdict recomputes, sweep respects it |
+| `autark lead status <lead-id> --status <s>` | Explicit status write — rarely needed; touches advance status automatically. Use `dead` for opt-outs |
 | `autark run finish --run-id <id> --narrative @./run.md` | Finish a run with a narrative |
 | `autark context <slug>[/<H##>]` | Product or hypothesis context: brief, feedback, hypotheses, leads, runs |
 | `autark feedback record\|delete` | Leave / remove an operator nudge on a product or hypothesis |
@@ -77,7 +79,7 @@ One command does three things atomically: sends the email, records a `touch` (ch
 
 For non-email channels (a GitHub comment, a Reddit reply), perform the action first, then record it: `autark touch add --lead-id <id> --channel github --thread-ref <permalink-to-YOUR-comment>`. Same rule: the touch write advances the status. `autark lead status` exists as an explicit override (e.g. marking a lead `dead`), not as part of the normal flow.
 
-Replies are recorded as touches with `--direction in`, which advances the lead to `replied`.
+Replies are captured automatically: a worker sweep polls the threads of `contacted` leads twice a day, records each real inbound message as a `direction: in` touch, and flips the lead to `replied` — no agent involvement. If a "reply" turns out to be a ticket bot or autoresponder, judge it with `autark touch mute <touch-id>`: the lead drops back to `contacted` and the sweep honors the judgment permanently. A real human opt-out ("remove me from your list") is not a mute — set the lead `dead`.
 
 ## Run Workflow
 
