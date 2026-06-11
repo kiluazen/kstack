@@ -78,6 +78,15 @@ autark mail send --lead-id "$LEAD_ID" --to person@example.com \
 
 One command does three things atomically: sends the email, records a `touch` (channel `email`, direction `out`, `thread_ref` = the AgentMail thread), and advances the lead `ready → contacted`. **The send is the bookkeeping** — never follow up with a separate status or logging command for the same send.
 
+**Following up when they have NOT replied yet:** reply to your own latest message **with an explicit `--to`** — a plain reply addresses the sender of the target message, which is you, and the follow-up self-sends into your own inbox:
+
+```sh
+autark mail reply --lead-id "$LEAD_ID" --message-id <your-last-msg-id> \
+  --to person@example.com --text @followup.txt
+```
+
+When answering THEIR message, plain `mail reply --lead-id --message-id <their-msg-id>` is correct — the sender you're addressing is them.
+
 For non-email channels (a GitHub comment, a Reddit reply), perform the action first, then record it: `autark touch add --lead-id <id> --channel github --thread-ref <permalink-to-YOUR-comment>`. Same rule: the touch write advances the status. `autark lead status` exists as an explicit override (e.g. marking a lead `dead`), not as part of the normal flow.
 
 Replies are captured automatically: a worker sweep polls the threads of `contacted` leads twice a day, records each real inbound message as a `direction: in` touch, and flips the lead to `replied` — no agent involvement. If a "reply" turns out to be a ticket bot or autoresponder, judge it with `autark touch mute <touch-id>`: the lead drops back to `contacted` and the sweep honors the judgment permanently. A real human opt-out ("remove me from your list") is not a mute — set the lead `dead`.
