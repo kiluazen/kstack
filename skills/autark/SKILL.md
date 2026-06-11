@@ -53,6 +53,7 @@ The CLI talks to the Autark Worker. After `autark login`, credentials live in `~
 | `autark lead add --hypothesis-id <id> --run-id <id> --input @/tmp/lead.json` | Upsert a person + create a lead in one write |
 | `autark mail send --lead-id <id> --to <email> --subject <s> --text @draft.txt` | Send email AND record the touch AND advance status, atomically |
 | `autark touch add --lead-id <id> --channel <c> [--direction out\|in] [--thread-ref <ref>]` | Record a non-email interaction on a lead (advances status) |
+| `autark lead list <slug> [--status replied\|contacted\|ready]` | The front door: one line per lead, ids first, newest replies on top. "Who replied?" starts here |
 | `autark lead show <lead-id>` | One lead fully loaded: person, bet, status, ordered touch log with ids — run this when handed a lead link |
 | `autark touch mute <touch-id>` | Judge an inbound touch a non-reply (ticket bot, autoresponder); lead verdict recomputes, sweep respects it |
 | `autark lead status <lead-id> --status <s>` | Explicit status write — rarely needed; touches advance status automatically. Use `dead` for opt-outs |
@@ -68,7 +69,7 @@ Use `@./file` for multi-line markdown or JSON values instead of inlining large s
 
 A lead payload needs, at minimum, enough identity to dedupe (`primary_email`, a handle, or `full_name`) and a `lead.angle` that answers: why does this human belong under this bet? `bio` and `signals` are enrichment, not ceremony. If you cannot write a concrete angle, skip the person — one real prospect beats five padded rows.
 
-**Outreach** drains the sheet, and only when the operator explicitly asks for it. Read the ready leads from `autark context <slug>/<H##>` — each carries the person's identity, headline, and the angle, which is the context for the message. Then send against the explicit lead id:
+**Outreach** drains the sheet, and only when the operator explicitly asks for it. Start from the sheet, not the context dump: `autark lead list <slug> --status ready` for first touches, `--status replied` for conversations needing a follow-up — each row carries the lead id, the thread pointer, and the angle. Drill into one with `autark lead show <id>`, read the conversation with `autark mail thread <thread_ref>`, then send against the explicit lead id:
 
 ```sh
 autark mail send --lead-id "$LEAD_ID" --to person@example.com \
