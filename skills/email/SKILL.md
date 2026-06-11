@@ -57,7 +57,7 @@ autark mail send \
   --to person@example.com \
   --subject "Subject" \
   --html @./body.html \
-  --run-id $RUN_ID
+  --lead-id $LEAD_ID
 ```
 
 `body.html`:
@@ -72,11 +72,13 @@ autark mail send \
 
 Recipient sees a styled email with "kushal" as a clickable link to autark.sh. This is the default shape for any cold outreach send.
 
-**Always pass `--run-id`.** With it, `autark mail send` records the autark action itself (channel=email, recipient, thread_id, message_id, subject) so you don't need a separate `autark log action`. Without `--run-id`, the send still works but isn't tracked — only do that for non-outreach signups/login flows where there's no autark run.
+**Always pass `--lead-id` on outreach.** One command does three things atomically: sends the email, records a `touch` on the lead (direction `out`, `thread_ref` = the AgentMail thread), and advances the lead `ready → contacted`. The send IS the bookkeeping — no separate status or logging command. The worker sweep then polls that thread (for contacted and replied leads) and records inbound replies automatically. Get the lead id from `autark lead list <slug>` / `autark lead show <id>`, or from the dashboard (clicking any lead row copies its id; `?lead=<id>` links carry it too).
 
-Other flags: `--cc`, `--bcc`, `--reply-to`, `--label`, `--attachment` (each repeatable or comma-separated), `--dry-run` to print the payload without sending, `--title` to override the auto-generated action title.
+`--run-id` still exists but it's the **legacy v1 action log** — it does not touch the lead sheet and the dashboard treats those rows as history. Don't use it for outreach against the sheet.
 
-Response is JSON with `message_id`, `thread_id`, and (when `--run-id` was passed) `autark_action_id`. Save it.
+Other flags: `--cc`, `--bcc`, `--reply-to`, `--label`, `--attachment` (each repeatable or comma-separated), `--dry-run` to print the payload without sending.
+
+Response is JSON with `message_id`, `thread_id`, and (when `--lead-id` was passed) the touch/lead record. Save it.
 
 ## Send a message — non-outreach (plain text, no link)
 
@@ -89,7 +91,7 @@ autark mail send \
   --text @./body.txt
 ```
 
-Plain `--text` is fine here. No `--run-id` because there's no autark run.
+Plain `--text` is fine here. No `--lead-id` because there's no lead — nothing lands on the sheet.
 
 ## Reply in a thread
 
@@ -97,12 +99,14 @@ Plain `--text` is fine here. No `--run-id` because there's no autark run.
 autark mail reply \
   --message-id "$MESSAGE_ID" \
   --html @./reply.html \
-  --run-id $RUN_ID
+  --lead-id $LEAD_ID
 ```
 
 Same shape rules: if your reply has a signature link, use `--html`. If you're answering a one-liner with a one-liner and no sig link, `--text` is fine.
 
 `$MESSAGE_ID` is the message id of the message you're replying to (the inbound one you got, or your own original send). It's what `mail send` / `mail message` / `mail thread` return.
+
+**Following up when they have NOT replied:** a plain reply addresses the sender of the target message — which is you, so it self-sends into your own inbox. Pass an explicit `--to person@example.com` on follow-ups to your own last message.
 
 Use `autark mail reply-all` to reply to all recipients, and `autark mail forward --message-id <id> --to <addr> [--html @body.html]` to forward.
 
@@ -135,9 +139,9 @@ Reuses the same authenticated session. Use this only when no wrapped command fit
 - For any send whose signature contains a link, use `--html` so the link is embedded in the name. Bare-URL signatures are not the shape autark sends.
 - Plain `--text` is fine for sends without a signature link (signup verifications, system pings, test sends).
 - Lint every draft (sends and replies). Treat the output as feedback, override the rules that don't apply.
-- Pass `--run-id` on every outreach send/reply so the action lands in autark and the reply-state cron can detect engagement.
+- Pass `--lead-id` on every outreach send/reply so the touch lands on the lead sheet and the reply sweep watches the thread.
 - Do not guess email permutations from name + domain. Use the `email-finder` skill before first contact — verify the address through a concrete source (Apollo, GitHub commits, etc.).
 - If the contact is high value or the source is shaky, corroborate with a second signal.
 - If an address hard-bounces, suppress it and move on. Don't try nearby guesses.
 - If browser work is needed for signups, verification links, or Apollo research, use the `chrome-relay` skill.
-- The `autark mail send` response (or `--dry-run` payload) is the canonical record — `message_id` + `thread_id` are how you find replies later. If you passed `--run-id`, autark already stored them under the action.
+- The lead's touch log is the canonical record — `autark lead show <id>` lists every send and reply in order. The `mail send` response (`message_id` + `thread_id`) is how you reply into the right thread later.

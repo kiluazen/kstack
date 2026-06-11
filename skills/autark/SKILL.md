@@ -26,7 +26,7 @@ product
 - `product`: the thing being tested.
 - `hypothesis`: a frozen bet. Create a new `H##` when the angle changes; do not rewrite old hypotheses.
 - `person`: one deduped human — identity (`full_name`, `primary_email`, `handles`) plus enrichment (`headline`, `bio`, `signals`). No status, rank, or angle lives here.
-- `lead`: one person under one hypothesis — carries the `angle` (why this human belongs under this bet) and a `status` (`sourced → ready → contacted → replied → done`, `dead` to kill). The same human under two bets is one person, two leads.
+- `lead`: one person under one hypothesis — carries the `angle` (why this human belongs under this bet) and a `status` (`sourced → ready → contacted → replied → done`, `dead` to kill). The same human under two bets is one person, two leads. The worker also stamps `person_label` (name, else masked email) automatically — it's what public visitors see, since person rows themselves are owner-only.
 - `touch`: one outreach interaction on one lead — `channel`, `direction` (`out`|`in`), `thread_ref` (AgentMail thread id or the URL of YOUR comment), `summary`. Bodies stay external; the touch is a pointer.
 - `run`: one work session under one hypothesis, sealed with `narrative_md`: context, decisions, follow-ups, and what changed.
 
@@ -54,7 +54,7 @@ The CLI talks to the Autark Worker. After `autark login`, credentials live in `~
 | `autark mail send --lead-id <id> --to <email> --subject <s> --text @draft.txt` | Send email AND record the touch AND advance status, atomically |
 | `autark touch add --lead-id <id> --channel <c> [--direction out\|in] [--thread-ref <ref>]` | Record a non-email interaction on a lead (advances status) |
 | `autark lead list <slug> [--status replied\|contacted\|ready]` | The front door: one line per lead, ids first, newest replies on top. "Who replied?" starts here |
-| `autark lead show <lead-id>` | One lead fully loaded: person, bet, status, ordered touch log with ids — run this when handed a lead link |
+| `autark lead show <lead-id>` | One lead fully loaded: person, bet, status, ordered touch log with ids — run this when handed a lead link or a bare id (clicking a lead row in the dashboard copies it; `https://autark.sh/<slug>?lead=<id>` links carry it in the query param) |
 | `autark touch mute <touch-id>` | Judge an inbound touch a non-reply (ticket bot, autoresponder); lead verdict recomputes, sweep respects it |
 | `autark lead status <lead-id> --status <s>` | Explicit status write — rarely needed; touches advance status automatically. Use `dead` for opt-outs |
 | `autark run finish --run-id <id> --narrative @./run.md` | Finish a run with a narrative |
@@ -89,7 +89,7 @@ When answering THEIR message, plain `mail reply --lead-id --message-id <their-ms
 
 For non-email channels (a GitHub comment, a Reddit reply), perform the action first, then record it: `autark touch add --lead-id <id> --channel github --thread-ref <permalink-to-YOUR-comment>`. Same rule: the touch write advances the status. `autark lead status` exists as an explicit override (e.g. marking a lead `dead`), not as part of the normal flow.
 
-Replies are captured automatically: a worker sweep polls the threads of `contacted` leads twice a day, records each real inbound message as a `direction: in` touch, and flips the lead to `replied` — no agent involvement. If a "reply" turns out to be a ticket bot or autoresponder, judge it with `autark touch mute <touch-id>`: the lead drops back to `contacted` and the sweep honors the judgment permanently. A real human opt-out ("remove me from your list") is not a mute — set the lead `dead`.
+Replies are captured automatically: a worker sweep polls the threads of `contacted` AND `replied` leads twice a day, records each real inbound message as a `direction: in` touch, and flips contacted leads to `replied` — no agent involvement. The touch log keeps appending after the first reply, so a lead's full conversation history (who said what, in what order) stays queryable via `autark lead show <id>`. If a "reply" turns out to be a ticket bot or autoresponder, judge it with `autark touch mute <touch-id>`: the lead drops back to `contacted` and the sweep honors the judgment permanently. A real human opt-out ("remove me from your list") is not a mute — set the lead `dead`.
 
 ## Run Workflow
 
@@ -135,7 +135,7 @@ autark hypothesis status <slug>/H07 --status dead
 - During sourcing, never advance a lead past `ready` and never send anything. Outreach happens only when the operator asks, and always against an explicit `--lead-id`.
 - Do not blast. Ten well-researched touches beat hundreds of generic sends.
 - Status moves with touches, not by hand. Reach for `lead status` only to override (e.g. `dead`), never to mirror a send you just made — the send already recorded it.
-- Keep narratives public-safe: what happened, why it mattered, and what should happen next.
+- Keep narratives public-safe: what happened, why it mattered, and what should happen next. On public products, hypothesis text, run narratives, and lead **angles** are readable by anyone — never put an email address in any of them. Emails belong on the person record (owner-only) and nowhere else.
 - Post stuck states to Plumcake instead of holding them in your head.
 
 ## Reference
