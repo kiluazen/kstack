@@ -26,7 +26,7 @@ product
 - `product`: the thing being tested.
 - `hypothesis`: a frozen bet. Create a new `H##` when the angle changes; do not rewrite old hypotheses.
 - `person`: one deduped human — identity (`full_name`, `primary_email`, `handles`) plus enrichment (`headline`, `bio`, `signals`). No status, rank, or angle lives here.
-- `lead`: one person under one hypothesis — carries the `angle` (why this human belongs under this bet) and a `status` (`sourced → ready → contacted → replied → done`, `dead` to kill). The same human under two bets is one person, two leads. The worker also stamps `person_label` (name, else masked email) automatically — it's what public visitors see, since person rows themselves are owner-only.
+- `lead`: one person under one hypothesis — carries the `angle` (why this human belongs under this bet) and a `status` (`sourced → ready → contacted → replied → done`, `dead` to kill). `sourced` = person + angle found but no confirmed email; `ready` = confirmed first-party email, mailable now. The same human under two bets is one person, two leads. The worker also stamps `person_label` (name, else masked email) automatically — it's what public visitors see, since person rows themselves are owner-only.
 - `touch`: one outreach interaction on one lead — `channel`, `direction` (`out`|`in`), `thread_ref` (AgentMail thread id or the URL of YOUR comment), `summary`. Bodies stay external; the touch is a pointer.
 - `run`: one work session under one hypothesis, sealed with `narrative_md`: context, decisions, follow-ups, and what changed.
 
@@ -68,6 +68,8 @@ Use `@./file` for multi-line markdown or JSON values instead of inlining large s
 **Sourcing** fills the sheet: find people, enrich them, write angles, record leads. A sourcing run sends nothing — no emails, no DMs, no posts, no comments.
 
 A lead payload needs, at minimum, enough identity to dedupe (`primary_email`, a handle, or `full_name`) and a `lead.angle` that answers: why does this human belong under this bet? `bio` and `signals` are enrichment, not ceremony. If you cannot write a concrete angle, skip the person — one real prospect beats five padded rows.
+
+**`sourced` vs `ready` — the email decides.** Set `lead.status` in every payload; do not rely on the default. A lead is `ready` only when you have a confirmed first-party email (`person.email_status: verified`) — `ready` is the queue outreach pulls from (`lead list <slug>/<H##> --status ready`), so it must mean "can be mailed right now". No confirmed email yet (`guessed` / `unknown` / `none`) → record it as `sourced`: you found the person and the angle, the email is still missing. A `sourced` lead is real work, not a failure — it just isn't sendable until someone confirms the address. (Definitions may sharpen later; the rule for now is simply: no confirmed email, status `sourced`.)
 
 **Outreach** drains the sheet, and only when the operator explicitly asks for it. Start from the sheet, not the context dump — and when you're working one bet, scope the sheet to it: `autark lead list <slug>/<H##> --status ready` for that hypothesis's first touches, `--status replied` for conversations needing a follow-up (drop the `/<H##>` for the product-wide view). Each row carries the lead id, the thread pointer, and the angle. Drill into one with `autark lead show <id>`, read the conversation with `autark mail thread <thread_ref>`, then send against the explicit lead id:
 
