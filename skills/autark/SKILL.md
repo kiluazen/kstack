@@ -19,16 +19,23 @@ When you are genuinely blocked by credentials, payment, login, unclear judgment,
 product
   has many hypotheses
   has many people            (person: one deduped human under one product)
-  has many leads             (lead: person × hypothesis — the angle + its status)
+  has many leads             (lead: person × hypothesis — the angle + the verdict)
+    has many channel_states  (one per channel: the live stage on email / linkedin / …)
   has many runs through hypotheses
 ```
 
 - `product`: the thing being tested.
 - `hypothesis`: a frozen bet. Create a new `H##` when the angle changes; do not rewrite old hypotheses.
-- `person`: one deduped human — identity (`full_name`, `primary_email`, `handles`) plus enrichment (`headline`, `bio`, `signals`). No status, rank, or angle lives here.
-- `lead`: one person under one hypothesis — carries the `angle` (why this human belongs under this bet) and a `status` (`sourced → ready → contacted → replied → done`, `dead` to kill). `sourced` = person + angle found but no confirmed email; `ready` = confirmed first-party email, mailable now. The same human under two bets is one person, two leads. The worker also stamps `person_label` (name, else masked email) automatically — it's what public visitors see, since person rows themselves are owner-only.
-- `touch`: one outreach interaction on one lead — `channel`, `direction` (`out`|`in`), `thread_ref` (AgentMail thread id or the URL of YOUR comment), `summary`. Bodies stay external; the touch is a pointer.
+- `person`: one deduped human — identity (`full_name`, `primary_email`, `handles`) plus enrichment (`headline`, `bio`, `signals`) and `company_domain` (the grouping key behind "who else do we know at <company>"). No stage or angle lives here.
+- `lead`: one person under one hypothesis — carries the `angle` (why this human belongs under this bet) and an `outcome` (`open` → `landed` / `dead`). **Outcome is the verdict on the whole pursuit across every channel, and it is yours to set, not the machine's** — `open` while you're still working it, `landed` when it converts, `dead` when it's over (opt-out / hard no). Outcome is what hides a lead from the action queues. The same human under two bets is one person, two leads.
+- `channel_state`: the live per-channel rollup — one row per (lead, channel). It is **derived from the touch log**, not set by hand: each touch you record advances its channel's `stage`. Stages by channel:
+  - **email**: `ready` (verified/sourced address, mailable now) → `contacted` → `replied`  (+`bounced`)
+  - **linkedin**: `reachable` (handle known) → `invited` → `accepted` → `contacted` → `replied`  (+`withdrawn`/`blocked`)
+  Each channel_state also tracks `needs_reply` (true = they sent the last word, the ball is in our court), `last_out_at`, `last_in_at`, `attempt_count`. A lead can be live on several channels at once — `email:contacted` and `linkedin:invited` side by side.
+- `touch`: one real interaction on one lead — `channel`, `event` (`source`/`invite`/`accept`/`message`/`bounce`/`withdraw`/`block`/`note`), `direction` (`out`|`in`), `ref` (AgentMail thread id, invite URL, the permalink of YOUR comment), `summary`. The append-only touch log is the source of truth; channel_state is its materialized rollup. Bodies stay external; the touch is a pointer.
 - `run`: one work session under one hypothesis, sealed with `narrative_md`: context, decisions, follow-ups, and what changed.
+
+> Migration note: the old single `lead.status` field still exists and is kept in sync, but the real model is now per-channel `stage` + lead `outcome`. Read and write through the channel-aware commands below; reach for `lead status` only as a legacy override.
 
 Re-sourcing the same email or handle under the same product updates the existing person instead of duplicating — ids are deterministic, so `lead add` is idempotent.
 
@@ -51,12 +58,13 @@ The CLI talks to the Autark Worker. After `autark login`, credentials live in `~
 | `autark run start --hypothesis-id <id>` | Start a run and print `RUN_ID` |
 | `autark lead template` | Print the minimal lead payload shape |
 | `autark lead add --hypothesis-id <id> --run-id <id> --input @/tmp/lead.json` | Upsert a person + create a lead in one write |
-| `autark mail send --lead-id <id> --to <email> --subject <s> --text @draft.txt` | Send email AND record the touch AND advance status, atomically |
-| `autark touch add --lead-id <id> --channel <c> [--direction out\|in] [--thread-ref <ref>]` | Record a non-email interaction on a lead (advances status) |
-| `autark lead list <slug>[/<H##>] [--status replied,ready\|contacted]` | The front door: one line per lead, ids first, newest replies on top. Scope to one bet with `<slug>/<H##>` (or `--hypothesis H##`); `--status` takes a comma list. "Who replied?" and "ready leads in H07?" both start here |
-| `autark lead show <lead-id>` | One lead fully loaded: person, bet, status, ordered touch log with ids — run this when handed a lead link or a bare id (clicking a lead row in the dashboard copies it; `https://autark.sh/<slug>?lead=<id>` links carry it in the query param) |
-| `autark touch mute <touch-id>` | Judge an inbound touch a non-reply (ticket bot, autoresponder); lead verdict recomputes, sweep respects it |
-| `autark lead status <lead-id> --status <s>` | Explicit status write — rarely needed; touches advance status automatically. Use `dead` for opt-outs |
+| `autark mail send --lead-id <id> --to <email> --subject <s> --text @draft.txt` | Send email AND record the touch AND advance the email channel, atomically |
+| `autark touch record --lead-id <id> --channel <c> --event <e> [--direction out\|in] [--ref <ref>]` | Record one real interaction; advances that channel's stage (alias: `touch add`). LinkedIn ladder: `--event invite`→invited, `accept`→accepted, `message`→contacted (or `--direction in`→replied) |
+| `autark lead list <slug>[/<H##>] [filters]` | The front door: one line per lead, ids first. Filters (combine): `--channel email\|linkedin`, `--stage <s>`, `--needs-reply` (ball in our court), `--silent-for <days>` (contacted, gone quiet), `--company <domain>`, `--include-closed`. Rows show outcome + every channel's stage (`*` = we owe a reply) |
+| `autark lead show <lead-id>` | One lead fully loaded: person, bet, outcome, per-channel state, ordered touch log with ids — run this when handed a lead link or a bare id (`https://autark.sh/<slug>?lead=<id>` carries it in the query param) |
+| `autark touch mute <touch-id>` | Judge an inbound touch a non-reply (ticket bot, autoresponder); channel_state recomputes, sweep respects it |
+| `autark lead outcome <lead-id> --set open\|landed\|dead` | The human verdict on the whole pursuit. `landed` = converted, `dead` = opt-out / hard no. Drops the lead out of the action queues |
+| `autark lead status <lead-id> --status <s>` | Legacy single-channel status override — prefer `touch record` (advances a channel) + `lead outcome` (the verdict) |
 | `autark run finish --run-id <id> --narrative @./run.md` | Finish a run with a narrative |
 | `autark context <slug>[/<H##>]` | Product or hypothesis context: brief, feedback, hypotheses, leads, runs |
 | `autark feedback record\|delete` | Leave / remove an operator nudge on a product or hypothesis |
@@ -69,11 +77,19 @@ Use `@./file` for multi-line markdown or JSON values instead of inlining large s
 
 A lead payload needs, at minimum, enough identity to dedupe (`primary_email`, a handle, or `full_name`) and a `lead.angle` that answers: why does this human belong under this bet? `bio` and `signals` are enrichment, not ceremony. If you cannot write a concrete angle, skip the person — one real prospect beats five padded rows.
 
-**`sourced` vs `ready` — the email decides.** Set `lead.status` in every payload; do not rely on the default. A lead is `ready` only when you have a confirmed first-party email (`person.email_status: verified`) — `ready` is the queue outreach pulls from (`lead list <slug>/<H##> --status ready`), so it must mean "can be mailed right now". No confirmed email yet (`guessed` / `unknown` / `none`) → record it as `sourced`: you found the person and the angle, the email is still missing. A `sourced` lead is real work, not a failure — it just isn't sendable until someone confirms the address. (Definitions may sharpen later; the rule for now is simply: no confirmed email, status `sourced`.)
+**`email_status` decides the email channel — set it honestly.** The email channel reaches `ready` (mailable now) automatically when the person has an address with `email_status: verified` or `sourced` (a real first-party address from a commit, site, or published page). A `guessed` / `unknown` / `none` address is NOT sendable and creates no email:ready — found the person but not a real address yet is honest, not a failure. So your sourcing job is simply: set `person.email_status` truthfully, and `email:ready` falls out of it. (A LinkedIn `handle` on the person likewise seeds `linkedin:reachable` automatically.) The legacy `lead.status` payload field still works but you no longer need to micromanage it.
 
-**Promote with `enrich`, never re-add.** When you later find the email (or a handle) for a lead already on the sheet, update it in place: `autark lead enrich --lead-id <id> --input @enrich.json` carrying the new `person.primary_email` + `person.email_status: verified` and `lead.status: ready`. Do NOT run `lead add` again for someone you already sourced — person identity is keyed on one field (`email` > handle > name), so adding an email *changes* the key and a re-add creates a duplicate row instead of updating. `enrich` keeps the same row id. If a duplicate ever slips through, `autark lead delete <id>` removes it (zero-touch leads only; it refuses anything with outreach history).
+**Promote with `enrich`, never re-add.** When you later find the email (or a handle) for a lead already on the sheet, update it in place: `autark lead enrich --lead-id <id> --input @enrich.json` carrying the new `person.primary_email` + `person.email_status: verified` (the email channel flips to `ready` on its own). Do NOT run `lead add` again for someone you already sourced — person identity is keyed on one field (`email` > handle > name), so adding an email *changes* the key and a re-add creates a duplicate row instead of updating. `enrich` keeps the same row id. If a duplicate ever slips through, `autark lead delete <id>` removes it (zero-touch leads only; it refuses anything with outreach history).
 
-**Outreach** drains the sheet, and only when the operator explicitly asks for it. Start from the sheet, not the context dump — and when you're working one bet, scope the sheet to it: `autark lead list <slug>/<H##> --status ready` for that hypothesis's first touches, `--status replied` for conversations needing a follow-up (drop the `/<H##>` for the product-wide view). Each row carries the lead id, the thread pointer, and the angle. Drill into one with `autark lead show <id>`, read the conversation with `autark mail thread <thread_ref>`, then send against the explicit lead id:
+**Outreach** drains the sheet, and only when the operator explicitly asks for it. Start from the sheet, not the context dump, and scope it to the work in front of you:
+
+- `autark lead list <slug>/<H##> --channel email --stage ready` — emails waiting to go out on this bet
+- `autark lead list <slug> --needs-reply` — conversations where the ball is in our court (any channel)
+- `autark lead list <slug> --channel linkedin --stage reachable` — people to send a LinkedIn invite to
+- `autark lead list <slug> --channel linkedin --stage accepted` — connections accepted, ready for a first message
+- `autark lead list <slug> --silent-for 7` — contacted, no reply, gone quiet 7+ days (follow-up candidates)
+
+Each row carries the lead id, the company, and every channel's stage. Drill into one with `autark lead show <id>`, read the email conversation with `autark mail thread <thread_ref>`, then act against the explicit lead id:
 
 ```sh
 autark mail send --lead-id "$LEAD_ID" --to person@example.com \
@@ -91,9 +107,22 @@ autark mail reply --lead-id "$LEAD_ID" --message-id <your-last-msg-id> \
 
 When answering THEIR message, plain `mail reply --lead-id --message-id <their-msg-id>` is correct — the sender you're addressing is them.
 
-For non-email channels (a GitHub comment, a Reddit reply), perform the action first, then record it: `autark touch add --lead-id <id> --channel github --thread-ref <permalink-to-YOUR-comment>`. Same rule: the touch write advances the status. `autark lead status` exists as an explicit override (e.g. marking a lead `dead`), not as part of the normal flow.
+**Non-email channels — do the action in the tool, then record the touch.** Email is the only channel the CLI sends; everywhere else you act first (in chrome-relay for LinkedIn, on the site for a GitHub/Reddit comment) and record the touch after, so autark mirrors what you did. The touch write advances that channel's stage:
 
-Replies are captured automatically: a worker sweep polls the threads of `contacted` AND `replied` leads twice a day, records each real inbound message as a `direction: in` touch, and flips contacted leads to `replied` — no agent involvement. The touch log keeps appending after the first reply, so a lead's full conversation history (who said what, in what order) stays queryable via `autark lead show <id>`. If a "reply" turns out to be a ticket bot or autoresponder, judge it with `autark touch mute <touch-id>`: the lead drops back to `contacted` and the sweep honors the judgment permanently. A real human opt-out ("remove me from your list") is not a mute — set the lead `dead`.
+```sh
+# LinkedIn, worked through chrome-relay, recorded step by step:
+autark touch record --lead-id "$LEAD_ID" --channel linkedin --event invite  --ref <invite-url>
+autark touch record --lead-id "$LEAD_ID" --channel linkedin --event accept                       # they accepted
+autark touch record --lead-id "$LEAD_ID" --channel linkedin --event message --ref <thread-url> --summary "first message"
+autark touch record --lead-id "$LEAD_ID" --channel linkedin --event message --direction in        # they replied
+
+# a GitHub comment:
+autark touch record --lead-id "$LEAD_ID" --channel github --ref <permalink-to-YOUR-comment>
+```
+
+Record each LinkedIn step as you actually take it — invite, then accept when they connect, then message — so the `reachable → invited → accepted → contacted → replied` ladder reflects reality and `lead list --channel linkedin --stage accepted` surfaces exactly who's ready for a first message.
+
+**Email replies are captured automatically**: a worker sweep polls the threads of `contacted` AND `replied` email leads twice a day, records each real inbound message as a `direction: in` touch, and flips the email channel to `replied` — no agent involvement. (LinkedIn has no such poll — you record inbound LinkedIn replies yourself with `--event message --direction in` when you see them.) The touch log keeps appending, so a lead's full history stays queryable via `autark lead show <id>`. If an email "reply" is a ticket bot or autoresponder, judge it with `autark touch mute <touch-id>`: that channel drops back to `contacted` and the sweep honors it permanently. A real human opt-out ("remove me from your list") is not a mute — it ends the pursuit: `autark lead outcome <id> --set dead`.
 
 ## Run Workflow
 
@@ -136,9 +165,9 @@ autark hypothesis status <slug>/H07 --status dead
 - Quality gates inclusion. Skip anyone whose angle you cannot write concretely.
 - Keep hypotheses immutable after creation.
 - Prefer first-party emails (commit email, personal-site mailto, published address); mark `email_status` honestly (`verified` / `guessed` / `none`).
-- During sourcing, never advance a lead past `ready` and never send anything. Outreach happens only when the operator asks, and always against an explicit `--lead-id`.
+- During sourcing, never send or message anything — just record people. Outreach happens only when the operator asks, and always against an explicit `--lead-id`.
 - Do not blast. Ten well-researched touches beat hundreds of generic sends.
-- Status moves with touches, not by hand. Reach for `lead status` only to override (e.g. `dead`), never to mirror a send you just made — the send already recorded it.
+- Channel stage moves with touches, not by hand — record what you actually did and the stage follows. `outcome` (`landed`/`dead`) is the one human verdict you set explicitly; never mirror a send you just made — the send already recorded it.
 - Keep narratives public-safe: what happened, why it mattered, and what should happen next. On public products, hypothesis text, run narratives, and lead **angles** are readable by anyone — never put an email address in any of them. Emails belong on the person record (owner-only) and nowhere else.
 - Post stuck states to Plumcake instead of holding them in your head.
 
