@@ -1,11 +1,17 @@
 ---
 name: chrome-relay
-description: "Use when an agent needs to operate the user's real Chrome session: listing tabs, snapshotting the page into actionable @refs, clicking, filling, typing into rich editors, pressing keys, evaluating JS, capturing screenshots, and reading console/network buffers. All actions go through CDP and run on backgrounded tabs without stealing focus."
+description: Use when an agent needs to operate the user's real Chrome session: listing tabs, snapshotting the page into actionable @refs, clicking, filling, typing into rich editors, pressing keys, evaluating JS, capturing screenshots, and reading console/network buffers. All actions go through CDP and run on backgrounded tabs without stealing focus.
 ---
 
 # Chrome Relay
 
 Drives the user's real Chrome through a Chrome extension + local native host. Prefer it when logged-in browser state (auth cookies, sessions, installed extensions) matters.
+
+The page can detect the cursor host element, although its shadow tree is closed.
+
+Keep all automation in the background. Target tabs with `--tab` or qualified refs; never activate a tab, raise a window, or use foreground input as a fallback. `--active` and `switch` are rejected. Run tests and benchmarks only in isolated headless Chromium. Recordings sample screenshots and may miss changes between samples.
+
+The user's real mouse never moves. Instead, each click, hover, fill and type draws the **agent cursor** in that tab: an arrow that glides to the target, pulses on click and wiggles while you're between commands. It shows the user what you're doing when they glance at the tab. It does not wait for its animation before acting; page scripts cannot access its isolated API, snapshots omit it, and `screenshot` hides it. `chrome-relay cursor off` turns it off. Older extensions draw no cursor. CLI 0.9.0 rejects readiness navigation, `--snapshot`, settle and new recording starts against them with `unsupported_tool` / `extension_compatibility` before acting. `navigate --wait none` retains legacy acknowledgment behavior; then wait explicitly for the required page state.
 
 ## Setup
 
@@ -18,11 +24,15 @@ Drives the user's real Chrome through a Chrome extension + local native host. Pr
    chrome-relay doctor
    ```
 
+The new `--snapshot` browsing loop, navigation readiness, background recordings and agent cursor require **CLI/native host 0.9.0 and extension 0.9.0**. Run `chrome-relay --version` and `chrome-relay profile list`; inspect `hostVersion` and `extensionVersion` for every profile you use. `chrome-relay update` updates the CLI/native host; Chrome updates each installed extension separately. Until both sides are 0.9.0, use separate actions, navigate with `--wait none`, and wait for the specific element/text you need before taking a snapshot.
+
 Use the latest CLI. Multi-browser/profile routing and uploads require >= 0.8.0; Dia detection and the agent-friendly profile picker require >= 0.8.1. If the printed version stays below 0.8 after installing, stop and resolve the stale binary on `PATH` before using 0.8 commands:
 ```sh
 chrome-relay --version
 which -a chrome-relay        # macOS/Linux; use `where chrome-relay` on Windows
 ```
+
+If `profile list` is empty but legacy `tabs` works, an old extension has not registered a profile. Update that extension and run `doctor`; an empty registry does not prove that no browser is connected.
 
 At the start of a session, run `chrome-relay profile list`. With one connected instance, normal commands need no profile flag. With several, this tells you exactly which browsers and profiles are reachable before you act.
 
@@ -30,15 +40,19 @@ At the start of a session, run `chrome-relay profile list`. With one connected i
 
 ```sh
 chrome-relay tabs                             # find or create a tab
-chrome-relay navigate "https://kushalsm.com" --new   # background tab by default
-chrome-relay snapshot --tab 1234 -i           # see the page: actionable elements get @refs
-chrome-relay click @e12                       # act on refs, no --tab, no selector
+chrome-relay navigate "https://kushalsm.com" --new --snapshot   # open in the background, print its @refs
+chrome-relay click @e12 --snapshot            # act on a ref; prints the page after it reacts
 chrome-relay fill @e14 "hello"
-chrome-relay wait --text "Saved" --tab 1234   # block until the page reacts
+chrome-relay keys Enter --tab 1234 --snapshot # submit; prints the result page
+chrome-relay wait --text "Saved" --tab 1234   # block until a specific condition holds
 chrome-relay snapshot --tab 1234 --diff       # print only what changed (~100 tokens)
 ```
 
-Snapshot output is compact indented text, usually 1 to 15 KB for most pages. Read it directly, no jq needed:
+`--snapshot` on `navigate`, `click`, `fill`, `type` and `keys` saves a turn: the action, then an interactive snapshot of the same tab. Input actions first wait for the page to finish reacting (requests done, DOM quiet, at most 2s) or for the navigation they started. `navigate` already returns once the page is usable (`--wait load|commit|none` to change that), and a plain `snapshot` waits for a pending navigation rather than reading a blank tab.
+
+A navigation result with `ready: false` reached its timeout before the page was ready. Do not act on it yet: wait for the URL, element or text you need, then take a fresh snapshot. DOMContentLoaded does not mean every app has finished hydration.
+
+Snapshot output is indented text. Large pages can exceed 100 KB; use a scope, depth cap or a single-value `get` when you need less. Read it directly, no jq needed:
 
 ```
 - link "Hacker News" [ref=e4]
@@ -58,13 +72,13 @@ Snapshot output is compact indented text, usually 1 to 15 KB for most pages. Rea
 | Command | What it does |
 |---|---|
 | `tabs` | List windows + tabs with their `tabId`s |
-| `navigate <url>` | Open in current tab. `--new` opens in a **background** tab (default). `--active` brings it to foreground. `--tab <id>` retargets an existing tab. |
-| `snapshot --tab <id> -i` | Page snapshot with actionable `@refs`: accessibility tree plus cursor-interactive sweep, one ref space, compact text. `-d N` depth cap, `-s <css>` scope to subtree, `-u` include hrefs, `--diff` print only changes since the last snapshot, `--json` structured envelope with the refs map. |
+| `navigate <url>` | Open in current tab. `--new` opens in a **background** tab. `--active` is rejected. `--tab <id>` retargets an existing tab without selecting it. Returns once the page is usable (DOMContentLoaded) with `ready`, `readyState`, `loadFailed`; `--wait load\|commit\|none` changes that. `--snapshot` also prints the page's refs. |
+| `snapshot --tab <id> -i` | Page snapshot with actionable `@refs`: accessibility tree plus cursor-interactive sweep, one ref space, compact text. `-d N` depth cap, `-s <css>` scope to subtree, `-u` include hrefs, `--diff` print only changes since the last snapshot, `--settle` first wait for the page to stop changing, `--json` structured envelope with the refs map. Waits for a pending navigation instead of reading a blank tab (`--no-wait` to skip). |
 | `wait <css\|@ref>` / `wait --text` / `--url <glob>` / `--load networkidle` / `--fn <js>` | Block until a condition holds (one per call, default 10s, max 25s). `wait 1500` just sleeps. On timeout the error includes current page state. |
 | `get text\|value\|attr\|count\|title\|url <target>` | One value, plain to stdout. No full snapshot. `get text @e12`, `get attr @e7 href`, `get count ".row"`. |
 | `batch '[{"name":"chrome_...","args":{...}}, ...]'` | N tool calls in ONE round-trip, sequential, bail-on-error by default. Use wire tool names. |
 | `skills get core` | Print this playbook, version-matched to the installed binary. |
-| `click <@ref \| selector> --tab <id>` | Trusted hover + press + release at element center (`pointerType: "mouse"`). Refs need no `--tab`. |
+| `click <@ref \| selector> --tab <id>` | Trusted hover + press + release at element center (`pointerType: "mouse"`). Refs need no `--tab`. `--snapshot` waits for the page to react, then prints it (also on `fill`, `type`, `keys`). |
 | `click --x N --y N --tab <id>` | Coordinate-mode click for canvas/SVG chart internals with no DOM handle. |
 | `hover <@ref \| selector \| --x --y>` | Pointer move only. Fires `:hover` styles. |
 | `fill <@ref \| selector> <value>` | Atomic value write into `<input>`/`<textarea>`/`<select>`. Bypasses React's value tracker. Refs reach inside shadow DOM (selectors can't). |
@@ -72,12 +86,13 @@ Snapshot output is compact indented text, usually 1 to 15 KB for most pages. Rea
 | `keys <chord> --tab <id>` | Single key or chord: `Enter`, `Tab`, `Escape`, `Cmd+K`, `Shift+ArrowDown`. |
 | `js <code> --tab <id>` | `Runtime.evaluate` in MAIN world. Use `return` for the value. Top-level `await` works. |
 | `screenshot --tab <id> -o <path>` | PNG. `--full` captures beyond viewport. `--max-edge N` resizes. |
-| `screencast --tab <id> -o <path>` | Record a tab via CDP (paint-driven). Requires an active tab. |
+| `screencast start --tab <id>` / `screencast stop --tab <id> --out <path>` | Record sampled screenshots in the background, up to 15fps. |
 | `network --tab <id>` | HTTP request/response ring buffer, last 200 per tab. `network body <requestId>` fetches a body while Chrome still has it. `network har --with-bodies` exports a HAR with bodies. |
 | `console --tab <id>` | `console.log/warn/error` + page exceptions, last 200. |
 | `viewport` | Emulate device viewport, DPR, mobile flag, touch, UA. |
 | `workspace` / `group` | Manage named windows / tab-groups so multiple agents can drive separate windows. |
-| `switch <tabId>` / `close <tabIds...>` | Activate or close tabs |
+| `switch <tabId>` / `close <tabIds...>` | Switch is rejected; use `--tab` to target a tab. Close removes tabs. |
+| `cursor [on\|off]` | Show or set the agent cursor (on by default). |
 | `self-reload` | Restart the extension's service worker after a rebuild |
 | `release-notes --since <ver>` / `update` | Queryable changelog; agent-readable JSON. |
 | `call <tool> [json]` | Raw pass-through for any internal tool. |
@@ -133,15 +148,23 @@ Files are paths â€” Chrome reads them itself, no size caps. `not_a_file_input` â
    chrome-relay click --tab 1234 --x 312 --y 218
    ```
 
-## Don't poll. Wait.
+## Fewer turns
 
-A snapshot after every action wastes turns. The cheap loop on a changing page:
+Every command is a turn, and turns cost far more than the browser does. Fold the look into the action:
+
+```sh
+chrome-relay click @e12 --snapshot              # act + see the result in one turn
+```
+
+When you need one specific outcome, wait for it, then read only what changed:
 
 ```sh
 chrome-relay click @e12
-chrome-relay wait --text "Saved" --tab 1234     # or wait <selector> / --url / --load
+chrome-relay wait --text "Saved" --tab 1234     # or wait <selector> / --url
 chrome-relay snapshot --tab 1234 --diff         # only the changes, refs included
 ```
+
+With a successful readiness result, `navigate` has already waited for its selected document event. Check `ready` before acting. A `load` wait can be held by images or other resources; wait for the element or text you need instead.
 
 ## Top gotchas
 
