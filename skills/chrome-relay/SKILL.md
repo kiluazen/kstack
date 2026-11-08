@@ -1,6 +1,6 @@
 ---
 name: chrome-relay
-description: Use when an agent needs to operate the user's real Chrome session: listing tabs, snapshotting the page into actionable @refs, clicking, filling, typing into rich editors, pressing keys, evaluating JS, capturing screenshots, and reading console/network buffers. All actions go through CDP and run on backgrounded tabs without stealing focus.
+description: 'Use when an agent needs to operate the user''s real Chrome session: listing tabs, snapshotting the page into actionable @refs, clicking, filling, typing into rich editors, pressing keys, evaluating JS, capturing screenshots, and reading console/network buffers. All actions go through CDP and run on backgrounded tabs without stealing focus.'
 ---
 
 # Chrome Relay
