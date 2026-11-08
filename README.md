@@ -33,5 +33,6 @@ npx skills add kiluazen/kstack -s autark,plumcake,chrome-relay,email,outreach,em
 | [`outreach`](skills/outreach/SKILL.md) | Cold-outreach playbook |
 | [`landing-page`](skills/landing-page/SKILL.md) | Spin up a marketing landing page fast |
 | [`llm-wiki`](skills/llm-wiki/SKILL.md) | Research notes, formatted to be machine-readable |
+| [`mcp-oauth-server`](skills/mcp-oauth-server/SKILL.md) | Day-one rules for MCP servers on workers-oauth-provider: never-expiring clients, the regression test, `/authorize` 4xx, `docs/qa.md` |
 
 Each skill is standalone — pick the ones you want.
